@@ -1,11 +1,10 @@
 package com.finlake.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.List;
 
 public record IcebergSnapshotDTO(
-    @JsonProperty("snapshot_id") Long snapshotId,
-    @JsonProperty("parent_id") Long parentId,
+    @JsonProperty("snapshot_id") String snapshotId,
+    @JsonProperty("parent_id") String parentId,
     String operation,
     @JsonProperty("committed_at") String committedAt
 ) {}

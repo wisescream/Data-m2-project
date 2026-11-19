@@ -22,6 +22,7 @@ export default function JobsPage() {
   const [selectedResult, setSelectedResult] = useState<any>(null);
 
   // Form State
+  const [table, setTable] = useState("transactions");
   const [format, setFormat] = useState("parquet");
   const [compression, setCompression] = useState("snappy");
   const [batchSize, setBatchSize] = useState(50000);
@@ -53,7 +54,7 @@ export default function JobsPage() {
       const payload: any = {
         source_id: "sqlserver-paysim",
         schema_name: "dbo",
-        table: "raw_transactions",
+        table,
         format,
         compression,
         batch_size: Number(batchSize),
@@ -143,7 +144,21 @@ export default function JobsPage() {
       {/* Dispatch Form Card */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <h2 className="text-lg font-bold text-white mb-4">Configure New Ingestion Pipeline Run</h2>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Source Table</label>
+            <select
+              value={table}
+              onChange={(e) => setTable(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+            >
+              <option value="transactions">dbo.transactions (PaySim)</option>
+              <option value="Customer">dbo.Customer</option>
+              <option value="Invoice">dbo.Invoice</option>
+              <option value="Payment">dbo.Payment</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase mb-1.5">Format</label>
             <select
@@ -207,7 +222,7 @@ export default function JobsPage() {
             />
           </div>
 
-          <div className="lg:col-span-5 flex justify-end mt-2">
+          <div className="lg:col-span-6 flex justify-end mt-2">
             <button
               type="submit"
               disabled={submitting}

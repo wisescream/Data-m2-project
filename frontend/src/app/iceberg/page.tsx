@@ -35,7 +35,7 @@ export default function IcebergPage() {
     setTraveling(true);
     setTimeTravelResult(null);
     try {
-      const sql = `SELECT COUNT(*) AS historical_rows, ROUND(SUM(amount), 2) AS historical_volume FROM iceberg.finlake_iceberg.transactions FOR VERSION AS OF ${selectedSnapshot};`;
+      const sql = `SELECT COUNT(*) AS historical_rows, ROUND(SUM(amount), 2) AS historical_volume FROM iceberg.finlake_iceberg.transactions FOR VERSION AS OF ${selectedSnapshot}`;
       const res = await runTrinoQuery(sql, "iceberg", "finlake_iceberg");
       setTimeTravelResult(res);
     } catch (e: any) {

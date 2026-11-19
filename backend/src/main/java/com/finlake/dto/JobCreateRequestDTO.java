@@ -16,7 +16,7 @@ public record JobCreateRequestDTO(
     public JobCreateRequestDTO {
         if (sourceId == null) sourceId = "sqlserver-paysim";
         if (schemaName == null) schemaName = "dbo";
-        if (table == null) table = "raw_transactions";
+        if (table == null) table = "transactions";
         if (format == null) format = "parquet";
         if (compression == null) compression = "snappy";
         if (batchSize == null) batchSize = 50000;

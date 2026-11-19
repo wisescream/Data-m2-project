@@ -47,6 +47,14 @@ CREATE NONCLUSTERED INDEX IX_transactions_type ON dbo.transactions (type);
 PRINT '[OK] Indexes on dbo.transactions created.';
 GO
 
+-- Compatibility view: dbo.raw_transactions -> dbo.transactions
+IF OBJECT_ID('dbo.raw_transactions', 'V') IS NOT NULL DROP VIEW dbo.raw_transactions;
+GO
+CREATE VIEW dbo.raw_transactions AS SELECT * FROM dbo.transactions;
+GO
+PRINT '[OK] Compatibility view dbo.raw_transactions created.';
+GO
+
 -- ===========================================================================
 -- 3b. Relational Customer, Invoice, Payment Tables
 -- ===========================================================================

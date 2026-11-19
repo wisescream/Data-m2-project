@@ -33,8 +33,8 @@ public class IcebergService {
 
         List<IcebergSnapshotDTO> snapshots = new ArrayList<>();
         for (Map<String, Object> r : snapResult.rows()) {
-            Long snapId = r.get("snapshot_id") instanceof Number n ? n.longValue() : null;
-            Long parentId = r.get("parent_id") instanceof Number n ? n.longValue() : null;
+            String snapId = r.get("snapshot_id") != null ? r.get("snapshot_id").toString() : null;
+            String parentId = r.get("parent_id") != null ? r.get("parent_id").toString() : null;
             String op = r.get("operation") != null ? r.get("operation").toString() : null;
             String committedAt = r.get("committed_at") != null ? r.get("committed_at").toString() : null;
             snapshots.add(new IcebergSnapshotDTO(snapId, parentId, op, committedAt));

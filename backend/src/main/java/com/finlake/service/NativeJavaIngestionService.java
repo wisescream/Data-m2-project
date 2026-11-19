@@ -77,6 +77,9 @@ public class NativeJavaIngestionService {
         if (tableName.contains(".")) {
             tableName = tableName.substring(tableName.lastIndexOf('.') + 1);
         }
+        if ("raw_transactions".equalsIgnoreCase(tableName)) {
+            tableName = "transactions";
+        }
 
         String format = (req.format() != null && !req.format().isBlank()) ? req.format().toLowerCase() : "parquet";
         String compression = (req.compression() != null && !req.compression().isBlank()) ? req.compression().toLowerCase() : "snappy";
