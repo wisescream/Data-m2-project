@@ -13,3 +13,4 @@ public record CatalogColumnDTO(
     @JsonProperty("pii_classification") String piiClassification,
     @JsonProperty("sample_values") List<String> sampleValues
 ) {}
+

@@ -35,3 +35,4 @@ public class DataCatalogController {
         return catalogService.searchCatalog(query);
     }
 }
+

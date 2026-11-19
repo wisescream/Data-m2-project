@@ -18,3 +18,4 @@ public record CatalogTableSummaryDTO(
     @JsonProperty("last_updated") String lastUpdated,
     List<String> tags
 ) {}
+

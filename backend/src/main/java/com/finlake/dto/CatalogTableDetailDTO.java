@@ -16,3 +16,4 @@ public record CatalogTableDetailDTO(
         String description
     ) {}
 }
+
