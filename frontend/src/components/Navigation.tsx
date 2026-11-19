@@ -9,6 +9,7 @@ import {
   PlayCircle, 
   BarChart3, 
   Clock, 
+  BookOpen,
   CheckCircle2, 
   AlertCircle 
 } from "lucide-react";
@@ -30,6 +31,7 @@ export default function Navigation() {
     { name: "SQL Sources", href: "/sources", icon: Database },
     { name: "Ingestion Jobs", href: "/jobs", icon: PlayCircle },
     { name: "Trino Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Data Catalog", href: "/catalog", icon: BookOpen },
     { name: "Iceberg Ledger", href: "/iceberg", icon: Clock },
     { name: "Benchmarks", href: "/benchmarks", icon: Layers },
   ];

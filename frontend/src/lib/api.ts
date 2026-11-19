@@ -113,3 +113,56 @@ export async function fetchIcebergMetadata() {
   if (!res.ok) throw new Error("Failed to fetch Iceberg metadata");
   return res.json();
 }
+
+export interface CatalogColumn {
+  name: string;
+  type: string;
+  description: string;
+  is_primary_key: boolean;
+  is_foreign_key: boolean;
+  references?: string;
+  pii_classification: string;
+  sample_values?: string[];
+}
+
+export interface CatalogTableSummary {
+  id: string;
+  name: string;
+  catalog: string;
+  schema: string;
+  domain: string;
+  description: string;
+  storage_format: string;
+  storage_layer: string;
+  total_rows: number;
+  column_count: number;
+  freshness_status: string;
+  last_updated: string;
+  tags: string[];
+}
+
+export interface CatalogTableDetail {
+  table_summary: CatalogTableSummary;
+  columns: CatalogColumn[];
+  sample_queries: Array<{ title: string; sql: string; description: string }>;
+  lineage_upstream: string[];
+  lineage_downstream: string[];
+}
+
+export async function fetchCatalogTables(): Promise<CatalogTableSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/api/catalog/tables`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch catalog tables");
+  return res.json();
+}
+
+export async function fetchCatalogTableDetail(tableId: string): Promise<CatalogTableDetail> {
+  const res = await fetch(`${API_BASE_URL}/api/catalog/tables/${tableId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch catalog table detail");
+  return res.json();
+}
+
+export async function searchCatalog(query: string): Promise<CatalogTableSummary[]> {
+  const res = await fetch(`${API_BASE_URL}/api/catalog/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Catalog search failed");
+  return res.json();
+}
