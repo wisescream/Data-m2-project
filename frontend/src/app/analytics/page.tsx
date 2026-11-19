@@ -65,14 +65,14 @@ const PRESET_QUERIES = [
   {
     title: "Fraud Rate & Average Amount (PaySim)",
     catalog: "hive",
-    schema: "default",
-    sql: "SELECT isFraud, COUNT(*) AS tx_count, ROUND(AVG(amount), 2) AS avg_amount, ROUND(SUM(amount), 2) AS total_volume FROM raw_transactions GROUP BY isFraud",
+    schema: "finlake_curated",
+    sql: "SELECT is_fraud, COUNT(*) AS tx_count, ROUND(AVG(amount), 2) AS avg_amount, ROUND(SUM(amount), 2) AS total_volume FROM hive.finlake_curated.transactions GROUP BY is_fraud",
   },
   {
     title: "Volume by Transaction Type",
     catalog: "hive",
-    schema: "default",
-    sql: "SELECT type, COUNT(*) AS tx_count, ROUND(SUM(amount), 2) AS total_amount, ROUND(AVG(amount), 2) AS avg_amount FROM raw_transactions GROUP BY type ORDER BY total_amount DESC",
+    schema: "finlake_curated",
+    sql: "SELECT type, COUNT(*) AS tx_count, ROUND(SUM(amount), 2) AS total_amount, ROUND(AVG(amount), 2) AS avg_amount FROM hive.finlake_curated.transactions GROUP BY type ORDER BY total_amount DESC",
   },
   {
     title: "Iceberg Snapshots Audit Log",
@@ -201,6 +201,30 @@ export default function AnalyticsPage() {
       }
     }
   }, [result, categoricalCols, numericCols]);
+
+  // Aggregate KPI summary metrics from current result set
+  const kpiStats = useMemo(() => {
+    if (!result || !result.rows || result.rows.length === 0) return null;
+    const totalRows = result.rows.length;
+    let sumMetric = 0;
+    let hasMetric = false;
+    if (yAxisKey) {
+      const vals = result.rows.map((r: any) => Number(r[yAxisKey])).filter((v: number) => !isNaN(v));
+      if (vals.length > 0) {
+        sumMetric = vals.reduce((a: number, b: number) => a + b, 0);
+        hasMetric = true;
+      }
+    }
+    const distinctGroups = xAxisKey ? new Set(result.rows.map((r: any) => String(r[xAxisKey]))).size : 0;
+    return {
+      totalRows,
+      sumMetric: hasMetric ? sumMetric : null,
+      avgMetric: hasMetric && totalRows > 0 ? sumMetric / totalRows : null,
+      distinctGroups,
+      metricName: yAxisKey,
+      groupName: xAxisKey,
+    };
+  }, [result, yAxisKey, xAxisKey]);
 
   const handleRunQuery = async () => {
     if (!sql.trim()) return;
@@ -563,7 +587,44 @@ export default function AnalyticsPage() {
               {result.error}
             </div>
           ) : result.rows && result.rows.length > 0 ? (
-            <div>
+            <div className="space-y-6">
+              {/* Executive KPI Summary Cards */}
+              {kpiStats && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Rows</p>
+                    <p className="text-xl font-bold text-white mt-0.5">{kpiStats.totalRows.toLocaleString()}</p>
+                  </div>
+                  {kpiStats.groupName && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                        Distinct ({kpiStats.groupName})
+                      </p>
+                      <p className="text-xl font-bold text-blue-400 mt-0.5">{kpiStats.distinctGroups}</p>
+                    </div>
+                  )}
+                  {kpiStats.sumMetric !== null && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                        Sum ({kpiStats.metricName})
+                      </p>
+                      <p className="text-xl font-bold text-emerald-400 mt-0.5">
+                        {kpiStats.sumMetric.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  )}
+                  {kpiStats.avgMetric !== null && (
+                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                        Avg ({kpiStats.metricName})
+                      </p>
+                      <p className="text-xl font-bold text-purple-400 mt-0.5">
+                        {kpiStats.avgMetric.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* TABLE VIEW */}
               {viewMode === "table" && (
                 <div className="overflow-x-auto max-h-[480px] rounded-xl border border-slate-800">
