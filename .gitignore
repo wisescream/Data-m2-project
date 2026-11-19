@@ -4,6 +4,8 @@
 data/raw/*.csv
 data/raw/*.zip
 data/raw/*.gz
+data/curated/
+*.parquet
 
 # Keep the directory structure
 !data/raw/.gitkeep
