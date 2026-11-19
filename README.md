@@ -141,31 +141,48 @@ python scripts/run_analytical_queries.py
 
 ---
 
-## 4. Plan de Contrôle (API REST FastAPI)
+## 4. Plan de Contrôle (Java Spring Boot 3 & Next.js 15)
 
-L'API de contrôle fournit les endpoints de découverte et d'orchestration asynchrone des jobs d'ingestion :
+FinLake propose un plan de contrôle moderne et robuste développé en **Java 21 / Spring Boot 3** (port 8000) et une interface utilisateur réactive en **Next.js 15 / React / Tailwind CSS** (port 3000) :
 
+### 4.1 Démarrer le Backend Spring Boot
 ```powershell
-python -m uvicorn src.finlake.api.app:app --host 127.0.0.1 --port 8000
+# En local avec Maven
+$env:JAVA_HOME = "C:\Program Files\Microsoft\jdk-21.0.13.102-hotspot"
+mvn -f backend/pom.xml spring-boot:run
 ```
+L'API REST est exposée sur `http://localhost:8000`.
 
-Documentation interactive Swagger disponible sur : `http://127.0.0.1:8000/docs`
+### 4.2 Démarrer le Frontend Next.js
+```powershell
+cd frontend
+npm run dev
+```
+L'interface visuelle est accessible sur `http://localhost:3000` :
+- **Overview Dashboard** (`/`) : Métriques globales en temps réel, KPIs de compression et état des conteneurs.
+- **SQL Sources** (`/sources`) : Test de connectivité SQL Server et inspection des métadonnées de schémas.
+- **Ingestion Jobs** (`/jobs`) : Lanceur de jobs d'extraction (Parquet/CSV, ZSTD/Snappy, batch size, partitionnement) et suivi des runs.
+- **Trino Analytics** (`/analytics`) : Éditeur SQL interactif avec requêtes prédéfinies sur PaySim et visualisation des résultats.
+- **Iceberg Ledger** (`/iceberg`) : Exploration des snapshots immuables et voyage dans le temps (*Time-Travel*).
+- **Benchmarks** (`/benchmarks`) : Tableaux comparatifs empiriques d'ingestion et d'accélération par partition pruning.
 
+### 4.3 Endpoints REST du Backend Spring Boot
 | Méthode | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/health` | Diagnostic de l'API et des dépendances |
-| `GET` | `/sources` | Liste des sources de données enregistrées |
+| `GET` | `/health` | Diagnostic de santé (SQL Server, MinIO, Trino) |
+| `GET` | `/sources` | Liste des sources de données configurées |
 | `POST` | `/sources/{id}/test` | Test de connectivité à la base SQL Server |
-| `GET` | `/sources/{id}/tables` | Liste des tables disponibles |
-| `GET` | `/sources/{id}/tables/{table}/schema` | Inspection des colonnes et types |
+| `GET` | `/sources/{id}/tables` | Liste des tables disponibles (dbo) |
+| `GET` | `/sources/{id}/tables/{table}/schema` | Inspection des colonnes, types et clés primaires |
 | `POST` | `/storage/jobs` | Soumission d'un job d'ingestion (réponse `202 Accepted`) |
-| `GET` | `/storage/jobs/{id}` | Suivi de progression et état du job |
-| `GET` | `/storage/jobs/{id}/result` | Résultats détaillés et manifeste de publication |
+| `GET` | `/storage/jobs` | Liste paginée de l'historique des jobs |
+| `GET` | `/storage/jobs/{id}` | Suivi d'état et détails du dernier run |
+| `GET` | `/storage/jobs/{id}/result` | Résultats détaillés et parsing du manifeste MinIO |
 | `POST` | `/storage/jobs/{id}/cancel` | Annulation d'un job en cours |
-| `POST` | `/storage/jobs/{id}/retry` | Réexécution d'un job échoué |
-| `GET` | `/dashboard` | Interface visuelle interactive (Observabilité & BI) |
-| `GET` | `/api/dashboard/stats` | Métriques globales et état des services pour dashboard |
-| `GET` | `/api/dashboard/iceberg` | Historique des snapshots et time-travel Iceberg |
+| `POST` | `/storage/jobs/{id}/retry` | Réexécution d'un job |
+| `GET` | `/api/dashboard/stats` | Métriques globales de la plateforme pour le dashboard |
+| `GET` | `/api/dashboard/iceberg` | Historique des snapshots et métadonnées Iceberg |
+| `POST` | `/api/analytics/query` | Exécution de requêtes SQL analytiques distribuées via Trino |
 
 ---
 

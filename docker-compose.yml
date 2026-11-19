@@ -146,6 +146,54 @@ services:
       - finlake-net
     restart: unless-stopped
 
+  # -------------------------------------------------------------------------
+  # 6. Spring Boot 3 Control Plane Backend
+  # -------------------------------------------------------------------------
+  finlake-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: finlake-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:sqlserver://sqlserver:1433;databaseName=finlake_source;encrypt=false;trustServerCertificate=true
+      - SPRING_DATASOURCE_USERNAME=sa
+      - SPRING_DATASOURCE_PASSWORD=${SQLSERVER_SA_PASSWORD}
+      - FINLAKE_MINIO_ENDPOINT=http://minio:9000
+      - FINLAKE_MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - FINLAKE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - FINLAKE_TRINO_HOST=trino
+      - FINLAKE_TRINO_PORT=8080
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      trino:
+        condition: service_healthy
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # 7. Next.js 15 Frontend Dashboard
+  # -------------------------------------------------------------------------
+  finlake-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: finlake-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - finlake-backend
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
 # ---------------------------------------------------------------------------
 # Networks & Persistent Volumes
 # ---------------------------------------------------------------------------
