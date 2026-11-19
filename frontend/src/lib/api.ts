@@ -274,3 +274,70 @@ export async function loginUser(username: string, password: string): Promise<Aut
   }
   return res.json();
 }
+
+// -----------------------------------------------------------------------------
+// Multi-Tenant Registry & Automated Provisioning (Phase 1)
+// -----------------------------------------------------------------------------
+
+export interface TenantRecord {
+  tenant_id: string;
+  display_name: string;
+  isolation_tier: "silo" | "bridge" | "pool";
+  vertical: "banking" | "retail" | "insurance" | "healthcare" | "telco" | "general";
+  anon_profile_id: string;
+  kms_key_id: string;
+  trino_catalog: string;
+  s3_bucket: string;
+  s3_prefix: string;
+  status: "provisioning" | "active" | "suspended" | "failed" | "offboarding";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenantProvisioningEvent {
+  event_id: number;
+  tenant_id: string;
+  step: string;
+  status: "PENDING" | "SUCCESS" | "FAILED" | "SKIPPED";
+  details: string;
+  created_at: string;
+}
+
+export interface TenantCreateRequest {
+  tenant_id: string;
+  display_name: string;
+  isolation_tier: "silo" | "bridge" | "pool";
+  vertical: "banking" | "retail" | "insurance" | "healthcare" | "telco" | "general";
+  anon_profile_id?: string;
+}
+
+export async function fetchAllTenants(): Promise<TenantRecord[]> {
+  const res = await fetch(`${API_BASE_URL}/api/admin/tenants`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch tenants");
+  return res.json();
+}
+
+export async function fetchTenant(tenantId: string): Promise<TenantRecord> {
+  const res = await fetch(`${API_BASE_URL}/api/admin/tenants/${tenantId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch tenant: ${tenantId}`);
+  return res.json();
+}
+
+export async function fetchTenantEvents(tenantId: string): Promise<TenantProvisioningEvent[]> {
+  const res = await fetch(`${API_BASE_URL}/api/admin/tenants/${tenantId}/events`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch provisioning events for tenant: ${tenantId}`);
+  return res.json();
+}
+
+export async function provisionTenant(data: TenantCreateRequest): Promise<TenantRecord> {
+  const res = await fetch(`${API_BASE_URL}/api/admin/tenants`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || err.error || "Failed to provision tenant");
+  }
+  return res.json();
+}

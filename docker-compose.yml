@@ -129,8 +129,10 @@ services:
     container_name: finlake-trino
     ports:
       - "${TRINO_PORT:-8080}:8080"
+    environment:
+      - CATALOG_MANAGEMENT=dynamic
     volumes:
-      - ./config/trino/catalog:/etc/trino/catalog:ro
+      - ./config/trino/catalog:/etc/trino/catalog
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info || exit 1"]
       interval: 10s
@@ -165,7 +167,10 @@ services:
       - FINLAKE_MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - FINLAKE_TRINO_HOST=trino
       - FINLAKE_TRINO_PORT=8080
+      - FINLAKE_CATALOG_DIR=/app/config/trino/catalog
       - GROQ_API_KEY=${GROQ_API_KEY}
+    volumes:
+      - ./config/trino/catalog:/app/config/trino/catalog
     depends_on:
       sqlserver:
         condition: service_healthy

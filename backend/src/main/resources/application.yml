@@ -37,6 +37,8 @@ finlake:
     catalog: ${TRINO_DEFAULT_CATALOG:hive}
     schema: ${TRINO_DEFAULT_SCHEMA:finlake_curated}
     jdbc-url: jdbc:trino://${TRINO_HOST:127.0.0.1}:${TRINO_PORT:8080}/hive/default
+  catalog:
+    dir: ${FINLAKE_CATALOG_DIR:/app/config/trino/catalog}
 
 management:
   endpoints:

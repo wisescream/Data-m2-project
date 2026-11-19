@@ -156,3 +156,64 @@ CREATE TABLE dbo.job_runs (
 );
 PRINT '[OK] Table dbo.job_runs created.';
 GO
+
+-- ===========================================================================
+-- 5. Multi-Tenant Registry & Provisioning Audit (Phase 1)
+-- ===========================================================================
+
+IF OBJECT_ID('dbo.tenant_provisioning_events', 'U') IS NOT NULL DROP TABLE dbo.tenant_provisioning_events;
+IF OBJECT_ID('dbo.tenant_data_sources', 'U') IS NOT NULL DROP TABLE dbo.tenant_data_sources;
+IF OBJECT_ID('dbo.tenants', 'U') IS NOT NULL DROP TABLE dbo.tenants;
+GO
+
+CREATE TABLE dbo.tenants (
+    tenant_id           VARCHAR(64) NOT NULL,
+    display_name        VARCHAR(128) NOT NULL,
+    isolation_tier      VARCHAR(20) NOT NULL CHECK (isolation_tier IN ('silo', 'bridge', 'pool')),
+    vertical            VARCHAR(32) NOT NULL CHECK (vertical IN ('banking', 'retail', 'insurance', 'healthcare', 'telco', 'general')),
+    anon_profile_id     VARCHAR(64) NOT NULL,
+    kms_key_id          VARCHAR(128) NOT NULL,
+    trino_catalog       VARCHAR(64) NOT NULL,
+    s3_bucket           VARCHAR(128) NOT NULL,
+    s3_prefix           VARCHAR(128) NOT NULL DEFAULT '',
+    status              VARCHAR(20) NOT NULL DEFAULT 'provisioning' CHECK (status IN ('provisioning', 'active', 'suspended', 'failed', 'offboarding')),
+    created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    updated_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_tenants PRIMARY KEY CLUSTERED (tenant_id),
+    CONSTRAINT UQ_tenants_trino_catalog UNIQUE (trino_catalog)
+);
+CREATE NONCLUSTERED INDEX IX_tenants_vertical ON dbo.tenants (vertical);
+CREATE NONCLUSTERED INDEX IX_tenants_status ON dbo.tenants (status);
+GO
+
+CREATE TABLE dbo.tenant_provisioning_events (
+    event_id            BIGINT IDENTITY(1,1) NOT NULL,
+    tenant_id           VARCHAR(64) NOT NULL,
+    step                VARCHAR(64) NOT NULL,
+    status              VARCHAR(20) NOT NULL CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'SKIPPED')),
+    details             VARCHAR(MAX) NULL,
+    created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_tenant_provisioning_events PRIMARY KEY CLUSTERED (event_id),
+    CONSTRAINT FK_events_tenant FOREIGN KEY (tenant_id) REFERENCES dbo.tenants(tenant_id) ON DELETE CASCADE
+);
+CREATE NONCLUSTERED INDEX IX_events_tenant_id ON dbo.tenant_provisioning_events (tenant_id);
+GO
+
+CREATE TABLE dbo.tenant_data_sources (
+    source_id           VARCHAR(64) NOT NULL,
+    tenant_id           VARCHAR(64) NOT NULL,
+    source_name         VARCHAR(128) NOT NULL,
+    type                VARCHAR(32) NOT NULL,
+    host                VARCHAR(128) NULL,
+    port                INT NULL,
+    database_name       VARCHAR(64) NULL,
+    secret_ref          VARCHAR(256) NOT NULL,
+    config_json         VARCHAR(MAX) NULL,
+    created_at          DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT PK_tenant_data_sources PRIMARY KEY CLUSTERED (source_id),
+    CONSTRAINT FK_data_sources_tenant FOREIGN KEY (tenant_id) REFERENCES dbo.tenants(tenant_id) ON DELETE CASCADE
+);
+CREATE NONCLUSTERED INDEX IX_data_sources_tenant ON dbo.tenant_data_sources (tenant_id);
+GO
+PRINT '[OK] Multi-tenant registry tables defined.';
+
