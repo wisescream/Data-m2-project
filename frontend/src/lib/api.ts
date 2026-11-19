@@ -241,3 +241,36 @@ export async function fetchAuditLogs(tenantId = "ALL"): Promise<AuditLog[]> {
   if (!res.ok) throw new Error("Failed to fetch audit logs");
   return res.json();
 }
+
+// -----------------------------------------------------------------------------
+// Authentication
+// -----------------------------------------------------------------------------
+
+export interface AuthSession {
+  token: string;
+  user: {
+    id: string;
+    username: string;
+    full_name: string;
+    email: string;
+    role: "ADMIN" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
+    tenant_id: string;
+    tenant_name: string;
+    assigned_catalog: string;
+    assigned_schema: string;
+    can_view_pii: boolean;
+  };
+}
+
+export async function loginUser(username: string, password: string): Promise<AuthSession> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Authentication failed");
+  }
+  return res.json();
+}

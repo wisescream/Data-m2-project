@@ -251,7 +251,55 @@ python scripts/run_all_tests.py
 
 ---
 
-## 8. Mentions Légales & Dataset Synthétique
+## 8. Enterprise Data Explorer & Governance Platform (Milestones M1–M4)
+
+FinLake includes an enterprise-grade commercial Data Explorer and Governance platform with full multi-tenancy, AI-assisted querying, business cataloging, and RBAC:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                 FinLake Next.js 15 + Tailwind CSS Interface                 │
+│         Visual Explorer • AI Copilot • Business Catalog • RBAC Guard        │
+└───────────────────────┬───────────────────────────────┬─────────────────────┘
+                        │                               │
+        ┌───────────────▼──────────────┐ ┌──────────────▼──────────────┐
+        │  Acme Payments Global        │ │  Apex Retail Bank EU        │
+        │  Tenant: acme_corp           │ │  Tenant: apex_bank          │
+        │  User: sarah.analyst         │ │  User: elena.analyst        │
+        └───────────────┬──────────────┘ └──────────────┬──────────────┘
+                        │                               │
+┌───────────────────────▼───────────────────────────────▼─────────────────────┐
+│                 Spring Boot 3.3.5 Enterprise Control Plane                  │
+│       • AuthService (JWT / RBAC)      • SecurityGovernanceService (PII)     │
+│       • DataCatalogService (Glossary) • AiTextToSqlService (Groq LLM)       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 8.1 Key Modules
+1. **M1 — Visual Data Explorer (`/analytics`)**: Interactive chart rendering (Bar, Line, Area, Donut, Data Table), 1-click exports (CSV, JSON, Clipboard), query history, saved bookmarks, and real-time execution statistics.
+2. **M2 — AI Text-to-SQL Copilot**: Ultra-fast natural language translation to ANSI SQL with automatic visualization recommendations powered by Groq (`openai/gpt-oss-120b`).
+3. **M3 — Data Catalog & Governance (`/catalog`)**: Searchable business glossary, column-level data dictionary, data sensitivity/PII classifications, and automated freshness SLAs.
+4. **M4 — Enterprise Multi-Tenancy & RBAC (`/security`)**: Isolated enterprise workspaces, user personas (`ANALYST`, `AUDITOR`, `ADMIN`, `DATA_ENGINEER`), dynamic PII masking (`s***@...`), and immutable query audit ledger.
+
+### 8.2 Out-of-the-Box User Accounts & Dataset Ownership
+The default platform dataset (`hive.finlake_curated` and `iceberg.finlake_iceberg`) is owned by **Acme Payments Global**:
+* **`sarah.analyst`** (Password: `FinLake2026!`): Senior Financial Analyst. Full analytics and AI Copilot access with dynamic PII masking automatically enforced.
+* **`david.auditor`** (Password: `FinLake2026!`): Compliance & AML Auditor. Unmasked forensic inspection with automated audit trail logging.
+* **`admin`** (Password: `FinLake2026!`): Platform Administrator. Full configuration and security policy management.
+
+*Detailed user documentation: [docs/DEFAULT_DATASET_USER.md](file:///docs/DEFAULT_DATASET_USER.md).*
+
+### 8.3 Multi-Tenant Data Mounting (External Businesses)
+Any external enterprise can mount their own transactional databases or object storage into FinLake:
+1. Register enterprise tenant & user identities in FinLake RBAC.
+2. Mount data via live JDBC extraction (SQL Server, Postgres, MySQL) or direct S3/MinIO bucket prefix (`s3a://finlake/tenants/{tenant_id}/`).
+3. Register isolated schema in Trino & Hive Metastore (`hive.{tenant_id}_curated`).
+4. Configure column sensitivity rules for dynamic PII obfuscation.
+
+*Full step-by-step mounting guide: [docs/MULTI_TENANT_DATA_MOUNTING.md](file:///docs/MULTI_TENANT_DATA_MOUNTING.md).*
+
+---
+
+## 9. Mentions Légales & Dataset Synthétique
 
 Le dataset **PaySim** est un jeu de données synthétique généré par simulateur multi-agents (AMLGraphX / PaySim1) sous licence **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)**.
 - Les identifiants `nameOrig` et `nameDest` sont des pseudonymes générés artificiellement.
