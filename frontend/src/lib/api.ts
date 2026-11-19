@@ -78,10 +78,22 @@ export async function fetchJobResult(jobId: string) {
   return res.json();
 }
 
-export async function runTrinoQuery(query: string, catalog = "hive", schema = "default", maxRows = 1000) {
+export async function runTrinoQuery(
+  query: string, 
+  catalog = "hive", 
+  schema = "default", 
+  maxRows = 1000,
+  security?: { tenantId?: string; userRole?: string; userId?: string; userName?: string }
+) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (security?.tenantId) headers["X-Tenant-Id"] = security.tenantId;
+  if (security?.userRole) headers["X-User-Role"] = security.userRole;
+  if (security?.userId) headers["X-User-Id"] = security.userId;
+  if (security?.userName) headers["X-User-Name"] = security.userName;
+
   const res = await fetch(`${API_BASE_URL}/api/analytics/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ query, catalog, schema, max_rows: maxRows }),
   });
   if (!res.ok) throw new Error("Query execution failed");
@@ -164,5 +176,68 @@ export async function fetchCatalogTableDetail(tableId: string): Promise<CatalogT
 export async function searchCatalog(query: string): Promise<CatalogTableSummary[]> {
   const res = await fetch(`${API_BASE_URL}/api/catalog/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Catalog search failed");
+  return res.json();
+}
+
+// -----------------------------------------------------------------------------
+// Enterprise Multi-Tenancy, RBAC & Governance
+// -----------------------------------------------------------------------------
+
+export interface Tenant {
+  id: string;
+  name: string;
+  code: string;
+  tier: string;
+  assigned_catalog: string;
+  assigned_schema: string;
+  user_count: number;
+  created_at: string;
+  features: string[];
+}
+
+export interface UserPersona {
+  id: string;
+  username: string;
+  full_name: string;
+  email: string;
+  tenant_id: string;
+  role: "ADMIN" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
+  permissions: string[];
+  can_view_pii: boolean;
+  can_manage_pipelines: boolean;
+  can_view_iceberg_snapshots: boolean;
+}
+
+export interface AuditLog {
+  id: string;
+  tenant_id: string;
+  user_id: string;
+  user_name: string;
+  user_role: string;
+  sql: string;
+  catalog: string;
+  schema: string;
+  rows_returned: number;
+  execution_time_ms: number;
+  masking_applied: boolean;
+  timestamp: string;
+  status: string;
+}
+
+export async function fetchTenants(): Promise<Tenant[]> {
+  const res = await fetch(`${API_BASE_URL}/api/security/tenants`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch tenants");
+  return res.json();
+}
+
+export async function fetchPersonas(): Promise<UserPersona[]> {
+  const res = await fetch(`${API_BASE_URL}/api/security/personas`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch user personas");
+  return res.json();
+}
+
+export async function fetchAuditLogs(tenantId = "ALL"): Promise<AuditLog[]> {
+  const res = await fetch(`${API_BASE_URL}/api/security/audit-logs?tenant=${tenantId}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch audit logs");
   return res.json();
 }

@@ -63,3 +63,6 @@ frontend/out/
 .next/
 out/
 .npm
+
+# Binaries
+kubectl.exe*

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import Link from "next/link";
 import { 
   BarChart3, 
   Play, 
@@ -22,7 +23,10 @@ import {
   Copy,
   Check,
   Sparkles,
-  Layers
+  Layers,
+  ShieldCheck,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { runTrinoQuery, generateSqlFromPrompt } from "@/lib/api";
 import {
@@ -239,14 +243,27 @@ export default function AnalyticsPage() {
     };
   }, [result, yAxisKey, xAxisKey]);
 
+  const getSecurityContext = () => {
+    const pId = typeof window !== "undefined" ? localStorage.getItem("finlake_active_persona") : null;
+    if (pId === "user_david_auditor") {
+      return { tenantId: "tenant_acme", userRole: "AUDITOR", userId: "user_david_auditor", userName: "David Miller" };
+    } else if (pId === "user_alex_admin") {
+      return { tenantId: "tenant_acme", userRole: "ADMIN", userId: "user_alex_admin", userName: "Alex Chen" };
+    } else if (pId === "user_elena_engineer") {
+      return { tenantId: "tenant_apex", userRole: "DATA_ENGINEER", userId: "user_elena_engineer", userName: "Elena Rostova" };
+    }
+    return { tenantId: "tenant_acme", userRole: "ANALYST", userId: "user_sarah_analyst", userName: "Sarah Connor" };
+  };
+
   const handleRunQuery = async () => {
     if (!sql.trim()) return;
     setExecuting(true);
     setResult(null);
     const start = Date.now();
+    const secContext = getSecurityContext();
 
     try {
-      const data = await runTrinoQuery(sql, catalog, schema);
+      const data = await runTrinoQuery(sql, catalog, schema, 1000, secContext);
       setResult(data);
 
       // Add to history
@@ -324,8 +341,9 @@ export default function AnalyticsPage() {
     setExecuting(true);
     setResult(null);
     const start = Date.now();
+    const secContext = getSecurityContext();
     try {
-      const data = await runTrinoQuery(target.sql, target.catalog, target.schema);
+      const data = await runTrinoQuery(target.sql, target.catalog, target.schema, 1000, secContext);
       setResult(data);
 
       const newHistItem: HistoryItem = {
@@ -607,6 +625,35 @@ export default function AnalyticsPage() {
             {preset.title}
           </button>
         ))}
+      </div>
+
+      {/* Enterprise Workspace & PII Security Banner */}
+      <div className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-purple-400" />
+          <span className="text-slate-400">Enterprise Workspace:</span>
+          <strong className="text-white font-mono">{getSecurityContext().tenantId === "tenant_apex" ? "Apex Retail Bank EU" : "Acme Payments Global"}</strong>
+          <span className="text-slate-500">•</span>
+          <span className="text-slate-400">Active Persona:</span>
+          <strong className="text-purple-300">{getSecurityContext().userName} ({getSecurityContext().userRole})</strong>
+        </div>
+        <div className="flex items-center gap-3">
+          {getSecurityContext().userRole === "ANALYST" || getSecurityContext().userRole === "DATA_ENGINEER" ? (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2.5 py-0.5 rounded-full">
+              <EyeOff className="h-3 w-3" /> Dynamic PII Masking Active
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-800 px-2.5 py-0.5 rounded-full">
+              <Eye className="h-3 w-3" /> Unmasked Auditor Mode
+            </span>
+          )}
+          <Link
+            href="/security"
+            className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold underline"
+          >
+            Switch Persona →
+          </Link>
+        </div>
       </div>
 
       {/* Query Editor Box */}
