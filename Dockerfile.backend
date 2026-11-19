@@ -1,0 +1,22 @@
+# Multi-stage Docker build for FinLake Spring Boot Control Plane
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /app
+
+COPY backend/pom.xml .
+RUN mvn dependency:go-offline -B
+
+COPY backend/src ./src
+RUN mvn clean package -DskipTests
+
+FROM eclipse-temurin:21-jre-jammy
+WORKDIR /app
+EXPOSE 8000
+
+COPY --from=build /app/target/finlake-backend-1.0.0-SNAPSHOT.jar app.jar
+
+ENV SERVER_PORT=8000
+ENV SQLSERVER_HOST=finlake-sqlserver
+ENV MINIO_ENDPOINT=http://finlake-minio:9000
+ENV TRINO_HOST=finlake-trino
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
