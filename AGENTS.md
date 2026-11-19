@@ -1,8 +1,8 @@
 # FinLake — Agent Instructions
 
 ## Project objective
-Build a local, Dockerized financial transaction data lake using PaySim as a synthetic dataset:
-SQL Server -> FastAPI/control plane + Python ingestion worker -> CSV/Parquet -> MinIO -> Hive Metastore -> Trino.
+Build a local, Dockerized enterprise financial transaction data lake using PaySim as a synthetic dataset:
+SQL Server -> Spring Boot 3 Control Plane + Native Java Ingestion -> Parquet -> MinIO -> Hive Metastore -> Trino -> Next.js 15 UI.
 
 ## Mandatory workflow
 1. Read `docs/CAHIER_DES_CHARGES.md` before proposing implementation.
@@ -15,7 +15,7 @@ SQL Server -> FastAPI/control plane + Python ingestion worker -> CSV/Parquet -> 
 
 ## Global constraints
 - Local Docker Compose only for the core project.
-- Python + FastAPI + SQLAlchemy + PyArrow; MinIO; Hive Metastore; Trino; SQL Server.
+- Java 21 + Spring Boot 3.3.5 + Next.js 15 + TypeScript; MinIO; Hive Metastore; Trino; SQL Server.
 - No Kubernetes, Spark, Kafka, Airflow, cloud dependencies, or paid APIs in the baseline.
 - Keep secrets out of source control; maintain `.env.example`.
 - Treat PaySim as synthetic mobile-money data, not real banking/customer data.

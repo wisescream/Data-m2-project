@@ -19,12 +19,13 @@ flowchart TD
         TRINO["Trino Query Engine 452<br/>hive.finlake_curated.transactions"]
     end
 
-    subgraph Control_Plane["Plan de Contrôle"]
-        API["FastAPI Control Plane<br/>Endpoints REST : Sources & Jobs"]
+    subgraph Control_Plane["Plan de Contrôle & Data Plane"]
+        API["Spring Boot 3.3.5 Control Plane<br/>Endpoints REST : Sources, Jobs, Auth, Catalog"]
+        WORKER["Native Java Ingestion Service<br/>Keyset Pagination O(1)<br/>PyArrow-Compatible Parquet<br/>Staging ➔ Promotion Atomique"]
     end
 
-    subgraph Data_Plane["Plan de Données"]
-        WORKER["Python Ingestion Worker<br/>Keyset Pagination O(1)<br/>PyArrow Snappy/Zstd<br/>Staging ➔ Promotion Atomique"]
+    subgraph Presentation["Interface Web"]
+        UI["Next.js 15 + Tailwind CSS<br/>Visual Analytics • Copilot AI • Catalog • RBAC"]
     end
 
     MSSQL -->|Keyset Extraction| WORKER
@@ -35,7 +36,7 @@ flowchart TD
     HIVE -->|Sync Partitions| MINIO
     TRINO -->|Catalog Metadata| HIVE
     TRINO -->|Vectorized Parquet Read| MINIO
-
+    UI -->|REST / JSON| API
 ```
 
 ### Principes Directeurs
@@ -54,50 +55,32 @@ flowchart TD
 
 ```text
 projet-data/
-├── .agents/skills/              # Compétences et guides directeurs des agents
-├── benchmarks/
-│   └── results/                 # Métriques réelles brutes (JSON, CSV, specs)
-│       ├── ingestion_benchmark.json
-│       ├── ingestion_benchmark.csv
-│       ├── sql_benchmark.json
-│       ├── sql_benchmark.csv
-│       └── system_specs.json
+├── backend/                     # Backend Spring Boot 3.3.5 / Java 21 (Control & Data Plane)
+│   ├── pom.xml                  # Dépendances Maven (Spring Data, Trino JDBC, MinIO SDK, Groq AI)
+│   └── src/main/java/com/finlake/
+│       ├── controller/          # REST: Auth, Sources, Jobs, Analytics, Catalog, Security
+│       ├── service/             # Logique métier: Ingestion, Copilot AI, RBAC, Catalog
+│       └── dto/                 # Objets de transfert de données
+├── frontend/                    # Frontend Next.js 15 + Tailwind CSS + Lucide Icons
+│   ├── package.json             # Dépendances React 19, Lucide, Recharts
+│   └── src/
+│       ├── app/                 # Pages: /analytics, /catalog, /security, /jobs, /login
+│       ├── components/          # Navigation, TableViewer, QueryHistory, Charts
+│       └── lib/api.ts           # Client API unifié
 ├── config/
 │   ├── hive-metastore/          # metastore-site.xml et JARs S3A Hadoop
-│   └── trino/catalog/           # hive.properties
+│   └── trino/catalog/           # hive.properties, iceberg.properties
 ├── data/raw/                    # Fichier source PaySim CSV
 ├── docs/                        # Documentation détaillée du projet
-│   ├── CAHIER_DES_CHARGES.md
+│   ├── MULTI_TENANT_MASTER_PLAN.md
+│   ├── MULTI_TENANT_DATA_MOUNTING.md
+│   ├── DEFAULT_DATASET_USER.md
 │   ├── architecture.md
-│   ├── data_dictionary.md
-│   ├── dataset_card.md
-│   ├── quality_report.md
-│   ├── api_examples.md
-│   ├── trino_queries.md
-│   └── benchmark_report.md
-├── scripts/                     # Scripts d'automatisation et de validation
-│   ├── smoke_test.py            # Diagnostic d'infrastructure Docker
-│   ├── import_to_sqlserver.py   # Bulk import staging SQL Server (6.36M lignes)
-│   ├── register_tables.py       # DDL Hive & sync partition metadata
-│   ├── run_analytical_queries.py# Exécution des 6 requêtes analytiques Trino
-│   ├── run_benchmarks.py        # Protocole officiel de benchmark
-│   └── run_all_tests.py         # Lanceur unifié de tests (P0 à P6)
-├── sql/
-│   ├── create_tables.sql        # Schéma DDL SQL Server & tables de jobs
-│   ├── trino_ddl.sql            # Schéma DDL Trino Hive Metastore
-│   └── analytical_queries.sql   # 6 requêtes SQL de référence
-├── src/finlake/                 # Code source modulaire FinLake
-│   ├── api/                     # FastAPI app, routeurs, schémas Pydantic
-│   ├── db/                      # Connecteur SQL Server & explorateur de schéma
-│   ├── ingestion/               # Pipeline, extracteur, sérialiseurs Parquet/CSV
-│   ├── jobs/                    # Gestionnaire d'état de jobs persistant
-│   ├── storage/                 # Client MinIO S3 (staging, manifestes)
-│   ├── trino/                   # Client Trino REST léger sans dépendance C
-│   └── worker/                  # Runner CLI exécutable en conteneur
-├── tests/                       # Suites de tests unitaire et d'intégration (P0 à P6)
+│   └── data_dictionary.md
+├── sql/                         # Schéma DDL SQL Server & tables de métadonnées
 ├── docker-compose.yml           # Stack conteneurisée multi-services
-└── Dockerfile.worker            # Image Python 3.11 spécialisée pour le Data Plane
-
+├── Dockerfile.backend           # Image multi-stage Eclipse Temurin Java 21
+└── Dockerfile.frontend          # Image multi-stage Node 20 Alpine Standalone
 ```
 
 ---

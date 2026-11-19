@@ -65,6 +65,8 @@ flowchart TD
 | `finlake-metastore-db` | `postgres:16.4-alpine` | Base relationnelle PostgreSQL pour le schéma Hive Metastore | 5433 (hôte) -> 5432 (conteneur) | `finlake-metastore-db-data` |
 | `finlake-hive-metastore` | `apache/hive:4.0.0` | Serveur Hive Metastore Thrift pour le catalogage des tables Parquet externes | 9083 | Stateless (stocké dans PostgreSQL) |
 | `finlake-trino` | `trinodb/trino:452` | Moteur de requêtes SQL distribué interrogeant les fichiers MinIO via le catalogue Hive | 8080 | Stateless (catalogue monté en volume) |
+| `finlake-backend` | `projet-data-finlake-backend` (Java 21) | Control Plane & Moteur d'Ingestion Natif (Spring Boot 3.3.5, REST API, Auth, Groq AI Copilot) | 8000 | Stateless |
+| `finlake-frontend` | `projet-data-finlake-frontend` (Node 20) | Interface utilisateur d'exploration analytique multi-entreprises (Next.js 15, Recharts, Tailwind CSS) | 3000 | Stateless |
 
 ---
 

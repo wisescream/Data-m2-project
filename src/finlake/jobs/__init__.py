@@ -1,1 +1,0 @@
-"""Jobs metadata management package."""
