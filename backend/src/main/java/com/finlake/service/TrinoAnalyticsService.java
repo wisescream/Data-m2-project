@@ -33,6 +33,16 @@ public class TrinoAnalyticsService {
 
     public QueryResultDTO executeQuery(String sql, String catalog, String schema, int maxRows) {
         long start = System.currentTimeMillis();
+        if (sql == null || sql.isBlank()) {
+            return new QueryResultDTO(List.of(), List.of(), 0, 0, "Query cannot be empty");
+        }
+
+        // Clean SQL statement: strip trailing semicolons and whitespace (Trino rejects trailing ';')
+        String cleanSql = sql.trim();
+        while (cleanSql.endsWith(";")) {
+            cleanSql = cleanSql.substring(0, cleanSql.length() - 1).trim();
+        }
+
         String targetCatalog = (catalog != null && !catalog.isBlank()) ? catalog : "hive";
         String targetSchema = (schema != null && !schema.isBlank()) ? schema : "default";
 
@@ -48,7 +58,7 @@ public class TrinoAnalyticsService {
              Statement stmt = conn.createStatement()) {
 
             stmt.setMaxRows(maxRows > 0 ? maxRows : 1000);
-            try (ResultSet rs = stmt.executeQuery(sql)) {
+            try (ResultSet rs = stmt.executeQuery(cleanSql)) {
                 ResultSetMetaData meta = rs.getMetaData();
                 int colCount = meta.getColumnCount();
                 for (int i = 1; i <= colCount; i++) {

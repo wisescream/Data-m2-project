@@ -18,37 +18,37 @@ const PRESET_QUERIES = [
     title: "Customer 3-Way Join (Customer + Invoice + Payment)",
     catalog: "hive",
     schema: "finlake_curated",
-    sql: "SELECT c.customer_id, c.first_name || ' ' || c.last_name AS customer_name, c.city, i.invoice_id, i.invoice_date, i.amount AS invoice_amt, i.status AS inv_status, p.payment_id, p.amount AS payment_amt, p.payment_method FROM hive.finlake_curated.customer c JOIN hive.finlake_curated.invoice i ON c.customer_id = i.customer_id JOIN hive.finlake_curated.payment p ON i.invoice_id = p.invoice_id LIMIT 10;",
+    sql: "SELECT c.customer_id, c.first_name || ' ' || c.last_name AS customer_name, c.city, i.invoice_id, i.invoice_date, i.amount AS invoice_amt, i.status AS inv_status, p.payment_id, p.amount AS payment_amt, p.payment_method FROM hive.finlake_curated.customer c JOIN hive.finlake_curated.invoice i ON c.customer_id = i.customer_id JOIN hive.finlake_curated.payment p ON i.invoice_id = p.invoice_id LIMIT 10",
   },
   {
     title: "Payments by Method (Volume & Count)",
     catalog: "hive",
     schema: "finlake_curated",
-    sql: "SELECT payment_method, COUNT(*) AS payment_count, ROUND(SUM(amount), 2) AS total_settled, ROUND(AVG(amount), 2) AS avg_payment FROM hive.finlake_curated.payment GROUP BY payment_method ORDER BY total_settled DESC;",
+    sql: "SELECT payment_method, COUNT(*) AS payment_count, ROUND(SUM(amount), 2) AS total_settled, ROUND(AVG(amount), 2) AS avg_payment FROM hive.finlake_curated.payment GROUP BY payment_method ORDER BY total_settled DESC",
   },
   {
     title: "Top 10 Cities by Total Invoiced",
     catalog: "hive",
     schema: "finlake_curated",
-    sql: "SELECT c.city, COUNT(DISTINCT c.customer_id) AS customers, COUNT(i.invoice_id) AS invoices, ROUND(SUM(i.amount), 2) AS total_invoiced FROM hive.finlake_curated.customer c JOIN hive.finlake_curated.invoice i ON c.customer_id = i.customer_id GROUP BY c.city ORDER BY total_invoiced DESC LIMIT 10;",
+    sql: "SELECT c.city, COUNT(DISTINCT c.customer_id) AS customers, COUNT(i.invoice_id) AS invoices, ROUND(SUM(i.amount), 2) AS total_invoiced FROM hive.finlake_curated.customer c JOIN hive.finlake_curated.invoice i ON c.customer_id = i.customer_id GROUP BY c.city ORDER BY total_invoiced DESC LIMIT 10",
   },
   {
     title: "Fraud Rate & Average Amount (PaySim)",
     catalog: "hive",
     schema: "default",
-    sql: "SELECT isFraud, COUNT(*) AS tx_count, ROUND(AVG(amount), 2) AS avg_amount, ROUND(SUM(amount), 2) AS total_volume FROM raw_transactions GROUP BY isFraud;",
+    sql: "SELECT isFraud, COUNT(*) AS tx_count, ROUND(AVG(amount), 2) AS avg_amount, ROUND(SUM(amount), 2) AS total_volume FROM raw_transactions GROUP BY isFraud",
   },
   {
     title: "Volume by Transaction Type",
     catalog: "hive",
     schema: "default",
-    sql: "SELECT type, COUNT(*) AS tx_count, ROUND(SUM(amount), 2) AS total_amount, ROUND(AVG(amount), 2) AS avg_amount FROM raw_transactions GROUP BY type ORDER BY total_amount DESC;",
+    sql: "SELECT type, COUNT(*) AS tx_count, ROUND(SUM(amount), 2) AS total_amount, ROUND(AVG(amount), 2) AS avg_amount FROM raw_transactions GROUP BY type ORDER BY total_amount DESC",
   },
   {
     title: "Iceberg Snapshots Audit Log",
     catalog: "iceberg",
     schema: "finlake_iceberg",
-    sql: 'SELECT snapshot_id, parent_id, operation, committed_at FROM iceberg.finlake_iceberg."transactions$snapshots" ORDER BY committed_at DESC;',
+    sql: 'SELECT snapshot_id, parent_id, operation, committed_at FROM iceberg.finlake_iceberg."transactions$snapshots" ORDER BY committed_at DESC',
   },
 ];
 

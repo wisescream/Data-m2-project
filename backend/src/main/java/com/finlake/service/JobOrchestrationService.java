@@ -34,15 +34,20 @@ public class JobOrchestrationService {
     private final JobMetadataRepository repository;
     private final MinioClient minioClient;
     private final ObjectMapper objectMapper;
+    private final NativeJavaIngestionService nativeIngestionService;
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
     @Value("${finlake.minio.bucket:finlake}")
     private String defaultBucket;
 
-    public JobOrchestrationService(JobMetadataRepository repository, MinioClient minioClient, ObjectMapper objectMapper) {
+    public JobOrchestrationService(JobMetadataRepository repository,
+                                   MinioClient minioClient,
+                                   ObjectMapper objectMapper,
+                                   NativeJavaIngestionService nativeIngestionService) {
         this.repository = repository;
         this.minioClient = minioClient;
         this.objectMapper = objectMapper;
+        this.nativeIngestionService = nativeIngestionService;
     }
 
     public JobCreateResponseDTO submitJob(JobCreateRequestDTO req) {
@@ -62,7 +67,7 @@ public class JobOrchestrationService {
             partitionStr
         );
 
-        executorService.submit(() -> runWorker(jobId, req));
+        executorService.submit(() -> nativeIngestionService.executeIngestion(jobId, req));
 
         return new JobCreateResponseDTO(
             jobId,
@@ -157,48 +162,7 @@ public class JobOrchestrationService {
             job.partitionColumns() != null ? List.of(job.partitionColumns().split(",")) : List.of(),
             null
         );
-        executorService.submit(() -> runWorker(jobId, req));
+        executorService.submit(() -> nativeIngestionService.executeIngestion(jobId, req));
         return true;
-    }
-
-    private void runWorker(String jobId, JobCreateRequestDTO req) {
-        String runId = "run_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-        repository.createRun(runId, jobId);
-
-        List<String> cmd = new ArrayList<>();
-        cmd.add("python");
-        cmd.add("-m");
-        cmd.add("src.finlake.worker.runner");
-        cmd.add("--job-id");
-        cmd.add(jobId);
-        cmd.add("--format");
-        cmd.add(req.format() != null ? req.format() : "parquet");
-        cmd.add("--compression");
-        cmd.add(req.compression() != null ? req.compression() : "snappy");
-        cmd.add("--batch-size");
-        cmd.add(String.valueOf(req.batchSize() != null ? req.batchSize() : 50000));
-
-        if (req.partitionBy() != null && !req.partitionBy().isEmpty()) {
-            cmd.add("--partition-by");
-            cmd.add(req.partitionBy().getFirst());
-        }
-        if (req.maxRows() != null && req.maxRows() > 0) {
-            cmd.add("--max-rows");
-            cmd.add(String.valueOf(req.maxRows()));
-        }
-
-        try {
-            ProcessBuilder pb = new ProcessBuilder(cmd);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                repository.updateRunStatus(runId, jobId, "FAILED", 0, 0, 0, null, "Worker exit code " + exitCode + ": " + out);
-            }
-        } catch (Exception e) {
-            log.error("Execution failed for job {}", jobId, e);
-            repository.updateRunStatus(runId, jobId, "FAILED", 0, 0, 0, null, e.getMessage());
-        }
     }
 }
