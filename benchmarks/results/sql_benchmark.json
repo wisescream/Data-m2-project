@@ -1,0 +1,62 @@
+[
+  {
+    "query_id": "Q1",
+    "title": "Full Table Scan",
+    "cold_latency_ms": 10772.92,
+    "warm_median_ms": 10191.93,
+    "warm_min_ms": 10080.75,
+    "warm_max_ms": 10448.96,
+    "warm_spread_ms": 368.21,
+    "rows_returned": 1
+  },
+  {
+    "query_id": "Q2",
+    "title": "Group By Transaction Type",
+    "cold_latency_ms": 10751.84,
+    "warm_median_ms": 11176.97,
+    "warm_min_ms": 10961.23,
+    "warm_max_ms": 14684.6,
+    "warm_spread_ms": 3723.37,
+    "rows_returned": 5
+  },
+  {
+    "query_id": "Q3",
+    "title": "Simulated Temporal Aggregation (Daily Trend)",
+    "cold_latency_ms": 13932.97,
+    "warm_median_ms": 12573.38,
+    "warm_min_ms": 10458.81,
+    "warm_max_ms": 34731.15,
+    "warm_spread_ms": 24272.34,
+    "rows_returned": 31
+  },
+  {
+    "query_id": "Q4",
+    "title": "Temporal Filter with Partition Pruning",
+    "cold_latency_ms": 1100.45,
+    "warm_median_ms": 733.22,
+    "warm_min_ms": 703.54,
+    "warm_max_ms": 762.78,
+    "warm_spread_ms": 59.24,
+    "rows_returned": 100
+  },
+  {
+    "query_id": "Q5",
+    "title": "Fraud Target Analysis",
+    "cold_latency_ms": 11541.39,
+    "warm_median_ms": 11792.16,
+    "warm_min_ms": 10137.13,
+    "warm_max_ms": 46391.13,
+    "warm_spread_ms": 36254.0,
+    "rows_returned": 2
+  },
+  {
+    "query_id": "Q6",
+    "title": "Partition Reconciliation and Lineage",
+    "cold_latency_ms": 17694.92,
+    "warm_median_ms": 16073.08,
+    "warm_min_ms": 14572.34,
+    "warm_max_ms": 18222.81,
+    "warm_spread_ms": 3650.47,
+    "rows_returned": 31
+  }
+]

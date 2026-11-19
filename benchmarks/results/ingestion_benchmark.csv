@@ -1,0 +1,8 @@
+scenario_id,format,compression,batch_size,partition_by,max_rows,duration_seconds,bytes_written,objects_count,avg_object_size_bytes,throughput_rows_sec,throughput_bytes_sec
+ingest_parquet_snappy_b1000,parquet,snappy,1000,event_date,20000,3.314,1134758,21,54036.1,6035.0,342413.4
+ingest_parquet_snappy_b5000,parquet,snappy,5000,event_date,20000,2.671,1020709,5,204141.8,7487.83,382144.89
+ingest_parquet_snappy_b10000,parquet,snappy,10000,event_date,20000,2.525,1010030,3,336676.67,7920.79,400011.88
+ingest_parquet_snappy_b20000,parquet,snappy,20000,event_date,20000,2.468,1009378,2,504689.0,8103.73,408986.22
+ingest_parquet_zstd_b10000,parquet,zstd,10000,event_date,20000,2.611,764573,3,254857.67,7659.9,292827.65
+ingest_parquet_none_b10000,parquet,none,10000,event_date,20000,2.409,1374763,3,458254.33,8302.2,570677.87
+ingest_csv_none_b10000,csv,none,10000,event_date,20000,2.397,2429879,3,809959.67,8343.76,1013716.73

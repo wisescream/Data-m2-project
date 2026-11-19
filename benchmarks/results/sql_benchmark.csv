@@ -1,0 +1,7 @@
+query_id,title,cold_latency_ms,warm_median_ms,warm_min_ms,warm_max_ms,warm_spread_ms,rows_returned
+Q1,Full Table Scan,10772.92,10191.93,10080.75,10448.96,368.21,1
+Q2,Group By Transaction Type,10751.84,11176.97,10961.23,14684.6,3723.37,5
+Q3,Simulated Temporal Aggregation (Daily Trend),13932.97,12573.38,10458.81,34731.15,24272.34,31
+Q4,Temporal Filter with Partition Pruning,1100.45,733.22,703.54,762.78,59.24,100
+Q5,Fraud Target Analysis,11541.39,11792.16,10137.13,46391.13,36254.0,2
+Q6,Partition Reconciliation and Lineage,17694.92,16073.08,14572.34,18222.81,3650.47,31

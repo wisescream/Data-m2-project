@@ -1,0 +1,204 @@
+{
+  "generated_at": "2026-11-18 19:06:29 UTC",
+  "source_file": "PS_20174392719_1491204439457_log.csv",
+  "file_size_bytes": 493534783,
+  "row_count": 6362620,
+  "checksum_sha256": "16910f90577b0d981bf8ff289714510bb89bc71bff7d3f220f024e287e4eea6b",
+  "schema": {
+    "expected_columns": [
+      "step",
+      "type",
+      "amount",
+      "nameOrig",
+      "oldbalanceOrg",
+      "newbalanceOrig",
+      "nameDest",
+      "oldbalanceDest",
+      "newbalanceDest",
+      "isFraud",
+      "isFlaggedFraud"
+    ],
+    "actual_columns": [
+      "step",
+      "type",
+      "amount",
+      "nameOrig",
+      "oldbalanceOrg",
+      "newbalanceOrig",
+      "nameDest",
+      "oldbalanceDest",
+      "newbalanceDest",
+      "isFraud",
+      "isFlaggedFraud"
+    ],
+    "missing_columns": [],
+    "extra_columns": [],
+    "column_count_match": true,
+    "names_match": true
+  },
+  "nulls": {
+    "total_null_cells": 0,
+    "null_counts": {
+      "step": 0,
+      "type": 0,
+      "amount": 0,
+      "nameOrig": 0,
+      "oldbalanceOrg": 0,
+      "newbalanceOrig": 0,
+      "nameDest": 0,
+      "oldbalanceDest": 0,
+      "newbalanceDest": 0,
+      "isFraud": 0,
+      "isFlaggedFraud": 0
+    },
+    "null_percentages": {
+      "step": 0.0,
+      "type": 0.0,
+      "amount": 0.0,
+      "nameOrig": 0.0,
+      "oldbalanceOrg": 0.0,
+      "newbalanceOrig": 0.0,
+      "nameDest": 0.0,
+      "oldbalanceDest": 0.0,
+      "newbalanceDest": 0.0,
+      "isFraud": 0.0,
+      "isFlaggedFraud": 0.0
+    },
+    "fully_complete_columns": [
+      "step",
+      "type",
+      "amount",
+      "nameOrig",
+      "oldbalanceOrg",
+      "newbalanceOrig",
+      "nameDest",
+      "oldbalanceDest",
+      "newbalanceDest",
+      "isFraud",
+      "isFlaggedFraud"
+    ]
+  },
+  "duplicates": {
+    "exact_duplicate_rows": 0,
+    "duplicate_percentage": 0.0,
+    "note": "Exact identical rows are possible in synthetic PaySim (different transactions occurring with same values). Not necessarily errors."
+  },
+  "distributions": {
+    "step": {
+      "min": 1,
+      "max": 743,
+      "mean": 243.4,
+      "unique_values": 743,
+      "in_range_1_744": true
+    },
+    "type": {
+      "unique_values": 5,
+      "value_counts": {
+        "PAYMENT": 2151495,
+        "TRANSFER": 532909,
+        "CASH_OUT": 2237500,
+        "DEBIT": 41432,
+        "CASH_IN": 1399284
+      },
+      "expected_types_present": true,
+      "unexpected_types": []
+    },
+    "amount": {
+      "min": 0.0,
+      "max": 92445516.64,
+      "mean": 179861.9,
+      "std": 603858.18,
+      "percentiles": {
+        "p1": 443.55,
+        "p5": 2234.38,
+        "p25": 13418.53,
+        "p50": 75497.32,
+        "p75": 210070.28,
+        "p95": 517950.59,
+        "p99": 1622820.65
+      },
+      "zero_count": 16,
+      "negative_count": 0
+    },
+    "nameOrig": {
+      "sample_values": [
+        "C1231006815",
+        "C1666544295",
+        "C1305486145",
+        "C840083671",
+        "C2048537720"
+      ],
+      "starts_with_C": true
+    },
+    "nameDest": {
+      "starts_with_C_count": 4211125,
+      "starts_with_M_count": 2151495,
+      "other_prefix_count": 0
+    },
+    "balances": {
+      "oldbalanceOrg": {
+        "min": 0.0,
+        "max": 59585040.37,
+        "mean": 833883.1,
+        "zero_count": 2102449,
+        "negative_count": 0
+      },
+      "newbalanceOrig": {
+        "min": 0.0,
+        "max": 49585040.37,
+        "mean": 855113.67,
+        "zero_count": 3609566,
+        "negative_count": 0
+      },
+      "oldbalanceDest": {
+        "min": 0.0,
+        "max": 356015889.35,
+        "mean": 1100701.67,
+        "zero_count": 2704388,
+        "negative_count": 0
+      },
+      "newbalanceDest": {
+        "min": 0.0,
+        "max": 356179278.92,
+        "mean": 1224996.4,
+        "zero_count": 2439433,
+        "negative_count": 0
+      }
+    },
+    "isFraud": {
+      "value_counts": {
+        "0": 6354407,
+        "1": 8213
+      },
+      "domain_valid": true,
+      "fraud_rate_pct": 0.1291
+    },
+    "isFlaggedFraud": {
+      "value_counts": {
+        "0": 6362604,
+        "1": 16
+      },
+      "domain_valid": true,
+      "flagged_rate_pct": 0.000251
+    },
+    "fraud_by_type": {
+      "TRANSFER": 4097,
+      "CASH_OUT": 4116
+    }
+  },
+  "balance_integrity": {
+    "outflow_origin_balance_mismatches": 3678407,
+    "outflow_origin_mismatch_pct": 74.11,
+    "outflow_total_checked": 4963336,
+    "inflow_origin_balance_mismatches": 101096,
+    "inflow_origin_mismatch_pct": 7.22,
+    "inflow_total_checked": 1399284,
+    "transfer_dest_balance_mismatches": 120811,
+    "transfer_dest_mismatch_pct": 22.67,
+    "merchant_count": 2151495,
+    "merchant_dest_all_zero_oldbal": true,
+    "merchant_dest_all_zero_newbal": true,
+    "note": "Balance mismatches in PaySim are expected by design: fraud transactions are synthetically cancelled post-execution."
+  },
+  "elapsed_seconds": 25.15
+}

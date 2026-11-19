@@ -1,0 +1,63 @@
+# FinLake .gitignore
+
+# Raw data files (too large for Git)
+data/raw/*.csv
+data/raw/*.zip
+data/raw/*.gz
+
+# Keep the directory structure
+!data/raw/.gitkeep
+!data/raw/checksums.sha256
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files with secrets
+.env
+!.env.example
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Docker data volumes (future phases)
+docker-data/
+
+# Test / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+.mvn/wrapper/maven-wrapper.jar
+
+# Node / Next.js
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+.next/
+out/
+.npm

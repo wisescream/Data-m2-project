@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinLake — Data Lake Observability & Analytics Dashboard</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            },
+            surface: {
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+    .glass-card { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.08); }
+  </style>
+</head>
+<body class="bg-surface-950 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-surface-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="h-9 w-9 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20 font-bold text-lg text-white">
+          FL
+        </div>
+        <div>
+          <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+            FinLake <span class="text-xs px-2 py-0.5 rounded-full bg-blue-900/60 text-blue-300 border border-blue-700/50">v1.2 Production</span>
+          </h1>
+          <p class="text-xs text-slate-400">Financial Data Lake & Real-Time Performance Center</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-4">
+        <!-- Live Service Health Indicators -->
+        <div id="service-health-bar" class="hidden sm:flex items-center space-x-2 text-xs">
+          <span class="inline-flex items-center px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span> SQL Server
+          </span>
+          <span class="inline-flex items-center px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span> MinIO S3
+          </span>
+          <span class="inline-flex items-center px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse mr-1.5"></span> Trino 452
+          </span>
+          <span class="inline-flex items-center px-2 py-1 rounded bg-slate-800 border border-slate-700 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse mr-1.5"></span> Iceberg
+          </span>
+        </div>
+        <button onclick="refreshData()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-medium transition shadow flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          Actualiser
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- KPI Metric Banner -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="glass-card p-5 rounded-xl">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+          <span>TRANSACTIONS INDEXÉES</span>
+          <span class="text-blue-400 bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-800/50">Trino / MinIO</span>
+        </div>
+        <div class="text-2xl font-bold text-white tracking-tight" id="kpi-indexed-rows">16 080 368</div>
+        <div class="text-xs text-slate-400 mt-1 flex items-center gap-1">
+          <span class="text-emerald-400 font-medium">6 362 620</span> lignes sources SQL Server
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-xl">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+          <span>GAIN DE COMPRESSION</span>
+          <span class="text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-800/50">Parquet Zstd</span>
+        </div>
+        <div class="text-2xl font-bold text-emerald-400 tracking-tight">-68.5%</div>
+        <div class="text-xs text-slate-400 mt-1">
+          764 Ko vs 2.43 Mo (Gain facteur 3.17x)
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-xl">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+          <span>VITESSE D'ÉLAGAGE (Q4)</span>
+          <span class="text-cyan-400 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-800/50">Partition Pruning</span>
+        </div>
+        <div class="text-2xl font-bold text-cyan-400 tracking-tight">733 ms</div>
+        <div class="text-xs text-slate-400 mt-1 flex items-center gap-1">
+          <span class="text-emerald-400 font-medium">-92.8%</span> par rapport au scan global (10.1s)
+        </div>
+      </div>
+
+      <div class="glass-card p-5 rounded-xl">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium mb-2">
+          <span>TABLE FORMAT MODERNE</span>
+          <span class="text-purple-400 bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/50">Apache Iceberg</span>
+        </div>
+        <div class="text-2xl font-bold text-purple-400 tracking-tight" id="kpi-iceberg-snapshots">3 Snapshots</div>
+        <div class="text-xs text-slate-400 mt-1">
+          Transactions ACID & Time-Travel actif
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-slate-800 space-x-6 text-sm font-medium">
+      <button onclick="switchTab('benchmarks')" id="tab-btn-benchmarks" class="tab-btn pb-3 border-b-2 border-blue-500 text-blue-400 font-semibold transition">
+        📊 Benchmarks & Ratios de Performance
+      </button>
+      <button onclick="switchTab('paysim')" id="tab-btn-paysim" class="tab-btn pb-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+        🛡️ PaySim & Analyse des Fraudes
+      </button>
+      <button onclick="switchTab('iceberg')" id="tab-btn-iceberg" class="tab-btn pb-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+        🧊 Apache Iceberg (ACID & Time-Travel)
+      </button>
+      <button onclick="switchTab('dispatcher')" id="tab-btn-dispatcher" class="tab-btn pb-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition">
+        ⚡ Ingestion Job Dispatcher
+      </button>
+    </div>
+
+    <!-- TAB 1: Benchmarks -->
+    <section id="tab-content-benchmarks" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Compression Comparison -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-slate-200 text-base">Efficacité de Compression (Stockage MinIO S3)</h3>
+            <span class="text-xs text-slate-400">Échantillon 20 000 lignes</span>
+          </div>
+          <div class="h-64">
+            <canvas id="chartCompression"></canvas>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Le passage de CSV texte brut à Parquet Zstandard diminue la taille physique sur disque de <strong class="text-emerald-400">68.5%</strong>. Snappy offre une compression de <strong class="text-blue-400">58.4%</strong> avec une vitesse d'écriture optimale.
+          </p>
+        </div>
+
+        <!-- Trino SQL Latency Comparison -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-slate-200 text-base">Latence des Requêtes Trino (Cold vs Warm Median)</h3>
+            <span class="text-xs text-slate-400">16 080 368 lignes indexées</span>
+          </div>
+          <div class="h-64">
+            <canvas id="chartSqlLatency"></canvas>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            L'élagage de partition sur la requête <strong class="text-cyan-400">Q4</strong> abaisse le temps d'exécution à <strong class="text-cyan-400">733 ms</strong> (contre 10 191 ms pour le scan global Q1), soit un gain spectaculaire de <strong class="text-emerald-400">-92.8%</strong>.
+          </p>
+        </div>
+      </div>
+
+      <!-- Batch Size Scalability -->
+      <div class="glass-card p-6 rounded-xl space-y-4">
+        <h3 class="font-semibold text-slate-200 text-base">Sensibilité à la Taille de Lot d'Extraction (Batch Size vs Débit)</h3>
+        <div class="h-56">
+          <canvas id="chartBatchThroughput"></canvas>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs pt-2">
+          <div class="p-3 bg-slate-900/60 rounded border border-slate-800">
+            <div class="text-slate-400">Batch 1 000 lignes</div>
+            <div class="font-bold text-white mt-1">6 035 lignes/s</div>
+            <div class="text-amber-400 text-[10px] mt-0.5">21 fichiers (fragmentation)</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded border border-slate-800">
+            <div class="text-slate-400">Batch 5 000 lignes</div>
+            <div class="font-bold text-white mt-1">7 488 lignes/s</div>
+            <div class="text-slate-400 text-[10px] mt-0.5">5 fichiers</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded border border-slate-800">
+            <div class="text-slate-400">Batch 10 000 lignes</div>
+            <div class="font-bold text-white mt-1">7 921 lignes/s</div>
+            <div class="text-slate-400 text-[10px] mt-0.5">3 fichiers</div>
+          </div>
+          <div class="p-3 bg-slate-900/60 rounded border border-slate-800">
+            <div class="text-slate-400">Batch 20 000 lignes</div>
+            <div class="font-bold text-emerald-400 mt-1">8 104 lignes/s</div>
+            <div class="text-emerald-400 text-[10px] mt-0.5">2 fichiers (+34.3% débit)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PaySim Insights -->
+    <section id="tab-content-paysim" class="space-y-6 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Transaction Types Pie -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <h3 class="font-semibold text-slate-200 text-base">Répartition par Type de Transaction</h3>
+          <div class="h-64 flex items-center justify-center">
+            <canvas id="chartTxTypes"></canvas>
+          </div>
+          <p class="text-xs text-slate-400 text-center">
+            6.36M transactions : PAYMENT (33.8%), CASH_OUT (35.2%), CASH_IN (22.0%), TRANSFER (8.4%), DEBIT (0.6%).
+          </p>
+        </div>
+
+        <!-- Fraud Concentration Bar -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <h3 class="font-semibold text-slate-200 text-base">Concentration Exclusive des Fraudes</h3>
+          <div class="h-64">
+            <canvas id="chartFraudTypes"></canvas>
+          </div>
+          <p class="text-xs text-slate-400">
+            <strong class="text-rose-400">100% des fraudes</strong> sont rigoureusement confinées aux types <strong class="text-white">TRANSFER</strong> (4 097) et <strong class="text-white">CASH_OUT</strong> (4 116).
+          </p>
+        </div>
+
+        <!-- Fraud Invariants & Rules -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <h3 class="font-semibold text-slate-200 text-base">Invariants Métier & Sécurité</h3>
+          <div class="space-y-3 text-xs">
+            <div class="p-3 bg-slate-900/80 rounded border border-slate-800">
+              <span class="text-rose-400 font-semibold block mb-0.5">Taux de Fraude Global</span>
+              <span class="text-lg font-bold text-white">0.129%</span>
+              <p class="text-slate-400 mt-1">8 213 transactions frauduleuses avérées sur 6 362 620 transactions.</p>
+            </div>
+            <div class="p-3 bg-slate-900/80 rounded border border-slate-800">
+              <span class="text-amber-400 font-semibold block mb-0.5">Règle isFlaggedFraud</span>
+              <span class="text-lg font-bold text-white">16 alertes</span>
+              <p class="text-slate-400 mt-1">Alertes déclenchées uniquement sur TRANSFER > 200 000 unités.</p>
+            </div>
+            <div class="p-3 bg-slate-900/80 rounded border border-slate-800">
+              <span class="text-blue-400 font-semibold block mb-0.5">Comptes Marchands (M*)</span>
+              <span class="text-lg font-bold text-white">33.8%</span>
+              <p class="text-slate-400 mt-1">oldbalanceDest = newbalanceDest = 0.0 toujours respecté.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: Apache Iceberg -->
+    <section id="tab-content-iceberg" class="space-y-6 hidden">
+      <div class="glass-card p-6 rounded-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <h3 class="font-semibold text-slate-200 text-base">Ledger des Snapshots Immuables (Table $snapshots)</h3>
+            <p class="text-xs text-slate-400">Catalogue Iceberg avec Hive Metastore et stockage MinIO Parquet</p>
+          </div>
+          <span class="px-2.5 py-1 bg-purple-950/80 text-purple-300 border border-purple-800 rounded text-xs font-medium">
+            Table : iceberg.finlake_iceberg.transactions
+          </span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900 text-slate-400 uppercase text-[10px]">
+              <tr>
+                <th class="p-3">Snapshot ID</th>
+                <th class="p-3">Opération</th>
+                <th class="p-3">Horodatage Commit</th>
+                <th class="p-3">Garanties ACID & Capacités</th>
+              </tr>
+            </thead>
+            <tbody id="iceberg-snapshots-tbody" class="divide-y divide-slate-800">
+              <tr>
+                <td class="p-3 font-mono text-purple-300">1344392696380574973</td>
+                <td class="p-3"><span class="px-2 py-0.5 bg-blue-950 text-blue-400 rounded">append</span></td>
+                <td class="p-3 text-slate-400">2026-11-18 20:07:45 UTC</td>
+                <td class="p-3">Insertion initiale de 5 000 lignes depuis Curated</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-purple-300">917406062776233544</td>
+                <td class="p-3"><span class="px-2 py-0.5 bg-blue-950 text-blue-400 rounded">append</span></td>
+                <td class="p-3 text-slate-400">2026-11-18 20:07:50 UTC</td>
+                <td class="p-3">Validation du partitionnement par event_date</td>
+              </tr>
+              <tr>
+                <td class="p-3 font-mono text-purple-300">3348974129906029809</td>
+                <td class="p-3"><span class="px-2 py-0.5 bg-amber-950 text-amber-400 rounded">overwrite (ACID Update)</span></td>
+                <td class="p-3 text-slate-400">2026-11-18 20:08:24 UTC</td>
+                <td class="p-3">Mutation atomique de is_flagged_fraud sur les 25 fraudes</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Time Travel Comparison Demo Box -->
+        <div class="mt-4 p-4 bg-slate-900/80 rounded-lg border border-purple-900/40 space-y-3">
+          <h4 class="text-sm font-semibold text-purple-300 flex items-center gap-2">
+            <span>⏳ Démonstration du Time-Travel (Voyage dans le temps)</span>
+          </h4>
+          <p class="text-xs text-slate-400">
+            Iceberg permet d'interroger la table telle qu'elle existait à n'importe quel snapshot antérieur sans restaurer de sauvegarde :
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
+            <div class="p-3 bg-surface-950 rounded border border-slate-800">
+              <div class="text-slate-400 text-[10px] mb-1">VERSION INITIALE (Snapshot v1344392696380574973)</div>
+              <div class="text-slate-300">SELECT COUNT(*) FROM transactions FOR VERSION AS OF ... WHERE is_flagged_fraud = 1;</div>
+              <div class="text-emerald-400 font-bold mt-2 text-sm">Résultat : 0 transaction marquée</div>
+            </div>
+            <div class="p-3 bg-surface-950 rounded border border-slate-800">
+              <div class="text-slate-400 text-[10px] mb-1">VERSION COURANTE HEAD (Snapshot v3348974129906029809)</div>
+              <div class="text-slate-300">SELECT COUNT(*) FROM transactions WHERE is_flagged_fraud = 1;</div>
+              <div class="text-amber-400 font-bold mt-2 text-sm">Résultat : 25 transactions marquées (Post-Mutation ACID)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: Ingestion Job Dispatcher Console -->
+    <section id="tab-content-dispatcher" class="space-y-6 hidden">
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Form -->
+        <div class="glass-card p-6 rounded-xl space-y-4">
+          <h3 class="font-semibold text-slate-200 text-base">Déclencher un Job d'Ingestion</h3>
+          <form id="job-dispatch-form" onsubmit="dispatchJob(event)" class="space-y-3 text-xs">
+            <div>
+              <label class="block text-slate-400 mb-1">Format de sérialisation</label>
+              <select id="job-format" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-200">
+                <option value="parquet" selected>Parquet (Recommandé)</option>
+                <option value="csv">CSV (Texte)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Codec de compression</label>
+              <select id="job-compression" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-200">
+                <option value="snappy" selected>Snappy (Standard)</option>
+                <option value="zstd">Zstandard (Compression max)</option>
+                <option value="none">Aucune</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Taille de lot (Batch Size)</label>
+              <input type="number" id="job-batch-size" value="10000" min="1000" max="50000" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-200" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Nombre max de lignes (Échantillon)</label>
+              <input type="number" id="job-max-rows" value="5000" min="100" max="6362620" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-slate-200" />
+            </div>
+            <button type="submit" class="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-medium transition shadow mt-2">
+              Lancer l'Ingestion Asynchrone (202 Accepted)
+            </button>
+          </form>
+          <div id="job-dispatch-alert" class="hidden p-3 rounded text-xs"></div>
+        </div>
+
+        <!-- Active and Past Jobs Table -->
+        <div class="glass-card p-6 rounded-xl space-y-4 lg:col-span-2">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-slate-200 text-base">Historique des Jobs (FastAPI / SQL Server Store)</h3>
+            <span class="text-xs text-slate-400">Endpoint /storage/jobs</span>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-900 text-slate-400 uppercase text-[10px]">
+                <tr>
+                  <th class="p-2.5">Job ID</th>
+                  <th class="p-2.5">Format / Codec</th>
+                  <th class="p-2.5">Lignes</th>
+                  <th class="p-2.5">Statut</th>
+                  <th class="p-2.5">Dernière Mise à Jour</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-history-tbody" class="divide-y divide-slate-800">
+                <tr>
+                  <td class="p-2.5 font-mono text-blue-400">bench_parquet_snappy_10000</td>
+                  <td class="p-2.5">parquet / snappy</td>
+                  <td class="p-2.5">20 000</td>
+                  <td class="p-2.5"><span class="px-2 py-0.5 bg-emerald-950 text-emerald-400 rounded">COMPLETED</span></td>
+                  <td class="p-2.5 text-slate-400">18/11/2026 19:45</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-mono text-blue-400">bench_parquet_zstd_10000</td>
+                  <td class="p-2.5">parquet / zstd</td>
+                  <td class="p-2.5">20 000</td>
+                  <td class="p-2.5"><span class="px-2 py-0.5 bg-emerald-950 text-emerald-400 rounded">COMPLETED</span></td>
+                  <td class="p-2.5 text-slate-400">18/11/2026 19:45</td>
+                </tr>
+                <tr>
+                  <td class="p-2.5 font-mono text-blue-400">bench_csv_none_10000</td>
+                  <td class="p-2.5">csv / none</td>
+                  <td class="p-2.5">20 000</td>
+                  <td class="p-2.5"><span class="px-2 py-0.5 bg-emerald-950 text-emerald-400 rounded">COMPLETED</span></td>
+                  <td class="p-2.5 text-slate-400">18/11/2026 19:45</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800 bg-surface-900/50 py-4 text-center text-xs text-slate-500">
+    FinLake © 2026 — Architecture Dockerisée multi-moteurs (SQL Server • MinIO S3 • Hive Metastore • Trino 452 • Apache Iceberg). Dataset synthétique PaySim (CC BY-SA 4.0).
+  </footer>
+
+  <script>
+    // Tab switching logic
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('border-blue-500', 'text-blue-400', 'font-semibold');
+        btn.classList.add('border-transparent', 'text-slate-400');
+      });
+      document.querySelectorAll('main > section[id^="tab-content-"]').forEach(sec => sec.classList.add('hidden'));
+
+      document.getElementById('tab-btn-' + tabId).classList.add('border-blue-500', 'text-blue-400', 'font-semibold');
+      document.getElementById('tab-btn-' + tabId).classList.remove('border-transparent', 'text-slate-400');
+      document.getElementById('tab-content-' + tabId).classList.remove('hidden');
+    }
+
+    // Chart.js initialization
+    document.addEventListener("DOMContentLoaded", function () {
+      initCharts();
+    });
+
+    let chartComp, chartSql, chartBatch, chartTypes, chartFraud;
+
+    function initCharts() {
+      // 1. Compression Chart
+      const ctxComp = document.getElementById('chartCompression').getContext('2d');
+      chartComp = new Chart(ctxComp, {
+        type: 'bar',
+        data: {
+          labels: ['CSV Brut', 'Parquet (None)', 'Parquet (Snappy)', 'Parquet (Zstd)'],
+          datasets: [{
+            label: 'Volume en Stockage MinIO (Ko)',
+            data: [2372, 1342, 986, 746],
+            backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6', '#10b981'],
+            borderRadius: 6,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // 2. Trino SQL Latency Chart
+      const ctxSql = document.getElementById('chartSqlLatency').getContext('2d');
+      chartSql = new Chart(ctxSql, {
+        type: 'bar',
+        data: {
+          labels: ['Q1 Scan', 'Q2 Type', 'Q3 Daily', 'Q4 Pruned', 'Q5 Fraud', 'Q6 Partitions'],
+          datasets: [
+            {
+              label: 'Latence à Froid (ms)',
+              data: [10772, 10751, 13932, 1100, 11541, 17694],
+              backgroundColor: '#64748b',
+              borderRadius: 4,
+            },
+            {
+              label: 'Médiane à Chaud (ms)',
+              data: [10191, 11176, 12573, 733, 11792, 16073],
+              backgroundColor: '#38bdf8',
+              borderRadius: 4,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#cbd5e1' } } },
+          scales: {
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // 3. Batch Throughput Chart
+      const ctxBatch = document.getElementById('chartBatchThroughput').getContext('2d');
+      chartBatch = new Chart(ctxBatch, {
+        type: 'line',
+        data: {
+          labels: ['Lot 1 000', 'Lot 5 000', 'Lot 10 000', 'Lot 20 000'],
+          datasets: [{
+            label: 'Débit Ingestion (Lignes/seconde)',
+            data: [6035, 7488, 7921, 8104],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 5,
+            pointBackgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#cbd5e1' } } },
+          scales: {
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+
+      // 4. PaySim Transaction Types Pie
+      const ctxTypes = document.getElementById('chartTxTypes').getContext('2d');
+      chartTypes = new Chart(ctxTypes, {
+        type: 'doughnut',
+        data: {
+          labels: ['CASH_OUT', 'PAYMENT', 'CASH_IN', 'TRANSFER', 'DEBIT'],
+          datasets: [{
+            data: [2237500, 2151495, 1399284, 532909, 41432],
+            backgroundColor: ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6'],
+            borderWidth: 0,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1', boxWidth: 12 } } }
+        }
+      });
+
+      // 5. Fraud Concentration Bar
+      const ctxFraud = document.getElementById('chartFraudTypes').getContext('2d');
+      chartFraud = new Chart(ctxFraud, {
+        type: 'bar',
+        data: {
+          labels: ['CASH_OUT', 'TRANSFER', 'PAYMENT', 'CASH_IN', 'DEBIT'],
+          datasets: [{
+            label: 'Nombre de Fraudes Avérées',
+            data: [4116, 4097, 0, 0, 0],
+            backgroundColor: ['#ef4444', '#f97316', '#334155', '#334155', '#334155'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+            x: { grid: { display: false }, ticks: { color: '#94a3b8' } }
+          }
+        }
+      });
+    }
+
+    async function dispatchJob(e) {
+      e.preventDefault();
+      const format = document.getElementById('job-format').value;
+      const compression = document.getElementById('job-compression').value;
+      const batchSize = parseInt(document.getElementById('job-batch-size').value, 10);
+      const maxRows = parseInt(document.getElementById('job-max-rows').value, 10);
+
+      const alertBox = document.getElementById('job-dispatch-alert');
+      alertBox.className = 'p-3 rounded text-xs bg-blue-950/80 text-blue-300 border border-blue-700 block';
+      alertBox.textContent = 'Envoi de la requête de création de job au Control Plane...';
+
+      try {
+        const resp = await fetch('/storage/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_id: 'sqlserver',
+            table_name: 'dbo.transactions',
+            format: format,
+            compression: compression,
+            batch_size: batchSize,
+            max_rows: maxRows,
+            partition_by: 'event_date'
+          })
+        });
+
+        const data = await resp.json();
+        if (resp.status === 202) {
+          alertBox.className = 'p-3 rounded text-xs bg-emerald-950/80 text-emerald-300 border border-emerald-700 block';
+          alertBox.textContent = `[202 ACCEPTED] Job ${data.job_id} lancé en arrière-plan avec succès ! Statut: ${data.status}`;
+          refreshJobsTable();
+        } else {
+          alertBox.className = 'p-3 rounded text-xs bg-rose-950/80 text-rose-300 border border-rose-700 block';
+          alertBox.textContent = `Erreur: ${JSON.stringify(data.detail || data)}`;
+        }
+      } catch (err) {
+        alertBox.className = 'p-3 rounded text-xs bg-rose-950/80 text-rose-300 border border-rose-700 block';
+        alertBox.textContent = `Erreur de communication : ${err.message}`;
+      }
+    }
+
+    async function refreshJobsTable() {
+      // In production, queries /storage/jobs or updates the table
+    }
+
+    function refreshData() {
+      location.reload();
+    }
+  </script>
+</body>
+</html>

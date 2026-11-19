@@ -1,0 +1,5 @@
+# FinLake P0 — Dataset profiling dependencies
+pandas>=2.0
+pyarrow>=14.0
+kagglehub>=0.3
+pytest>=7.0

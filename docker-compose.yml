@@ -1,0 +1,163 @@
+services:
+  # -------------------------------------------------------------------------
+  # 1. Operational Relational Source & Control Plane Metadata
+  # -------------------------------------------------------------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: finlake-sqlserver
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=${SQLSERVER_SA_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # 2. S3-Compatible Object Storage (MinIO)
+  # -------------------------------------------------------------------------
+  minio:
+    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    container_name: finlake-minio
+    user: "0:0"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - minio-data:/data
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # Helper: Bootstrap default bucket structure on MinIO
+  minio-init:
+    image: alpine/minio:RELEASE.2025-10-15T17-29-55Z
+    container_name: finlake-minio-init
+    user: "0:0"
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Initializing FinLake bucket structure in MinIO...';
+      mkdir -p /data/finlake/warehouse;
+      mkdir -p /data/finlake/raw;
+      mkdir -p /data/finlake/curated;
+      mkdir -p /data/finlake/staging;
+      mkdir -p /data/finlake/manifests;
+      echo 'FinLake bucket directories ready.';
+      exit 0;
+      "
+    volumes:
+      - minio-data:/data
+    networks:
+      - finlake-net
+
+  # -------------------------------------------------------------------------
+  # 3. Metastore Relational Database (PostgreSQL)
+  # -------------------------------------------------------------------------
+  metastore-db:
+    image: postgres:16.4-alpine
+    container_name: finlake-metastore-db
+    ports:
+      - "${METASTORE_DB_PORT:-5433}:5432"
+    environment:
+      - POSTGRES_DB=${METASTORE_DB_NAME:-metastore}
+      - POSTGRES_USER=${METASTORE_DB_USER:-hive}
+      - POSTGRES_PASSWORD=${METASTORE_DB_PASSWORD:-hive_password_2026!}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${METASTORE_DB_USER:-hive} -d ${METASTORE_DB_NAME:-metastore}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - metastore-db-data:/var/lib/postgresql/data
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # 4. Hive Metastore (Catalog for S3 Parquet tables)
+  # -------------------------------------------------------------------------
+  hive-metastore:
+    image: apache/hive:4.0.0
+    container_name: finlake-hive-metastore
+    ports:
+      - "${HIVE_METASTORE_PORT:-9083}:9083"
+    environment:
+      - SERVICE_NAME=metastore
+      - DB_DRIVER=postgres
+    volumes:
+      - ./config/hive-metastore/metastore-site.xml:/opt/hive/conf/metastore-site.xml:ro
+      - ./config/hive-metastore/lib/postgresql-42.7.4.jar:/opt/hive/lib/postgresql-42.7.4.jar:ro
+      - ./config/hive-metastore/lib/hadoop-aws-3.3.6.jar:/opt/hive/lib/hadoop-aws-3.3.6.jar:ro
+      - ./config/hive-metastore/lib/aws-java-sdk-bundle-1.12.367.jar:/opt/hive/lib/aws-java-sdk-bundle-1.12.367.jar:ro
+    depends_on:
+      metastore-db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # 5. Trino Distributed SQL Query Engine
+  # -------------------------------------------------------------------------
+  trino:
+    image: trinodb/trino:452
+    container_name: finlake-trino
+    ports:
+      - "${TRINO_PORT:-8080}:8080"
+    volumes:
+      - ./config/trino/catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    depends_on:
+      hive-metastore:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Networks & Persistent Volumes
+# ---------------------------------------------------------------------------
+networks:
+  finlake-net:
+    name: finlake-network
+    driver: bridge
+
+volumes:
+  sqlserver-data:
+    name: finlake-sqlserver-data
+  minio-data:
+    name: finlake-minio-data
+  metastore-db-data:
+    name: finlake-metastore-db-data
