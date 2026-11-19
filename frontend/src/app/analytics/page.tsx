@@ -24,7 +24,7 @@ import {
   Sparkles,
   Layers
 } from "lucide-react";
-import { runTrinoQuery } from "@/lib/api";
+import { runTrinoQuery, generateSqlFromPrompt } from "@/lib/api";
 import {
   ResponsiveContainer,
   BarChart,
@@ -132,6 +132,19 @@ export default function AnalyticsPage() {
   const [bookmarkTitle, setBookmarkTitle] = useState("");
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // AI Copilot Natural Language Assistant
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiResult, setAiResult] = useState<{
+    sql: string;
+    explanation: string;
+    catalog: string;
+    schema: string;
+    suggested_chart: "table" | "bar" | "line" | "area" | "pie";
+    suggested_x?: string;
+    suggested_y?: string;
+  } | null>(null);
 
   // Load bookmarks & history from localStorage
   useEffect(() => {
@@ -274,6 +287,66 @@ export default function AnalyticsPage() {
     setSql(preset.sql);
   };
 
+  const handleAskAi = async (promptOverride?: string) => {
+    const textToAsk = (promptOverride || aiPrompt).trim();
+    if (!textToAsk) return;
+    setAiGenerating(true);
+    try {
+      const generated = await generateSqlFromPrompt(textToAsk);
+      setAiResult(generated);
+      setSql(generated.sql);
+      setCatalog(generated.catalog);
+      setSchema(generated.schema);
+    } catch (err: any) {
+      console.error("AI SQL generation error:", err);
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  const handleApplyAndRunAi = async (overrideResult?: any) => {
+    const target = overrideResult || aiResult;
+    if (!target) return;
+    setSql(target.sql);
+    setCatalog(target.catalog);
+    setSchema(target.schema);
+    if (target.suggested_chart) {
+      setViewMode(target.suggested_chart);
+    }
+    if (target.suggested_x) {
+      setXAxisKey(target.suggested_x);
+    }
+    if (target.suggested_y) {
+      setYAxisKey(target.suggested_y);
+    }
+
+    // Trigger immediate execution
+    setExecuting(true);
+    setResult(null);
+    const start = Date.now();
+    try {
+      const data = await runTrinoQuery(target.sql, target.catalog, target.schema);
+      setResult(data);
+
+      const newHistItem: HistoryItem = {
+        id: "hist_" + Date.now(),
+        sql: target.sql.trim(),
+        catalog: target.catalog,
+        schema: target.schema,
+        executedAt: new Date().toLocaleTimeString(),
+        rowCount: data.rows ? data.rows.length : 0,
+        durationMs: data.execution_time_ms || (Date.now() - start),
+        isError: !!data.error
+      };
+      saveHistoryToStorage([newHistItem, ...history.slice(0, 14)]);
+    } catch (err: any) {
+      const errRes = { error: err.message, columns: [], rows: [] };
+      setResult(errRes);
+    } finally {
+      setExecuting(false);
+    }
+  };
+
   const handleSaveBookmark = () => {
     if (!bookmarkTitle.trim()) return;
     const newBm: BookmarkItem = {
@@ -386,6 +459,110 @@ export default function AnalyticsPage() {
             {executing ? "Executing..." : "Execute SQL"}
           </button>
         </div>
+      </div>
+
+      {/* AI Copilot: Text-to-SQL Assistant */}
+      <div className="bg-gradient-to-r from-purple-950/40 via-slate-900 to-indigo-950/40 border border-purple-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                FinLake AI Copilot
+                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  Natural Language to SQL
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Ask analytical questions in plain English — the copilot generates optimized ANSI SQL and visual chart configs.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Input Bar */}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAskAi()}
+            placeholder="e.g. 'Show top 5 cities by invoiced revenue' or 'Analyze fraud vs non-fraud transaction volume'..."
+            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 shadow-inner"
+          />
+          <button
+            onClick={() => handleAskAi()}
+            disabled={aiGenerating || !aiPrompt.trim()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-purple-600/30 active:scale-95 disabled:opacity-50 shrink-0"
+          >
+            <Sparkles className={`h-4 w-4 ${aiGenerating ? "animate-spin" : ""}`} />
+            {aiGenerating ? "Translating..." : "Ask AI"}
+          </button>
+        </div>
+
+        {/* Quick Suggestion Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Suggestions:</span>
+          {[
+            { label: "💳 Payments by Method", prompt: "Show payment volume and count by payment method" },
+            { label: "🏙️ Top Cities by Revenue", prompt: "Find top 10 cities by total invoiced revenue" },
+            { label: "🚨 Fraud Rate Breakdown", prompt: "Analyze fraud vs legitimate transactions volume" },
+            { label: "📑 Invoices by Status", prompt: "Group invoices by status with counts and totals" },
+            { label: "👥 Customer 3-Way Join", prompt: "Show customer details with invoices and settled payments" },
+            { label: "🧊 Iceberg Commit Snapshots", prompt: "Show latest Iceberg committed snapshots audit log" },
+          ].map((chip) => (
+            <button
+              key={chip.label}
+              onClick={() => {
+                setAiPrompt(chip.prompt);
+                handleAskAi(chip.prompt);
+              }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/60 text-slate-300 hover:text-white transition shadow-sm"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        {/* AI Result Card */}
+        {aiResult && (
+          <div className="mt-3 p-4 rounded-xl bg-slate-950/90 border border-purple-500/40 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700/50 font-mono">
+                  Catalog: {aiResult.catalog}
+                </span>
+                <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 font-mono">
+                  Schema: {aiResult.schema}
+                </span>
+                {aiResult.suggested_chart && (
+                  <span className="px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/50 font-semibold uppercase text-[10px]">
+                    Recommended Chart: {aiResult.suggested_chart}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleApplyAndRunAi()}
+                  disabled={executing}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-md shadow-emerald-600/30 active:scale-95 disabled:opacity-50"
+                >
+                  <Play className={`h-3.5 w-3.5 ${executing ? "animate-spin" : ""}`} />
+                  {executing ? "Executing..." : "Apply & Run Query"}
+                </button>
+              </div>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              <strong className="text-purple-300 font-medium">Copilot Logic: </strong>
+              {aiResult.explanation}
+            </p>
+            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-purple-200 overflow-x-auto leading-relaxed">
+              {aiResult.sql}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Bookmarks Bar */}

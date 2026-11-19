@@ -88,6 +88,24 @@ export async function runTrinoQuery(query: string, catalog = "hive", schema = "d
   return res.json();
 }
 
+export async function generateSqlFromPrompt(prompt: string): Promise<{
+  sql: string;
+  explanation: string;
+  catalog: string;
+  schema: string;
+  suggested_chart: "table" | "bar" | "line" | "area" | "pie";
+  suggested_x?: string;
+  suggested_y?: string;
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/analytics/ai/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error("AI SQL generation failed");
+  return res.json();
+}
+
 export async function fetchIcebergMetadata() {
   const res = await fetch(`${API_BASE_URL}/api/dashboard/iceberg`, {
     cache: "no-store",
