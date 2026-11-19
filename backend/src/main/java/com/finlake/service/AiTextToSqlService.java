@@ -1,5 +1,7 @@
 package com.finlake.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finlake.dto.TextToSqlRequestDTO;
 import com.finlake.dto.TextToSqlResponseDTO;
 import org.slf4j.Logger;
@@ -11,16 +13,24 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class AiTextToSqlService {
 
     private static final Logger log = LoggerFactory.getLogger(AiTextToSqlService.class);
 
+    private final ObjectMapper objectMapper;
     private final HttpClient httpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(5))
+        .connectTimeout(Duration.ofSeconds(6))
         .build();
+
+    public AiTextToSqlService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
 
     public TextToSqlResponseDTO generateSql(TextToSqlRequestDTO request) {
         if (request == null || request.prompt() == null || request.prompt().trim().isEmpty()) {
@@ -38,28 +48,107 @@ public class AiTextToSqlService {
         String prompt = request.prompt().trim();
         String lower = prompt.toLowerCase(Locale.ROOT);
 
-        // Check if OpenAI API Key or Ollama is present for external LLM execution
-        String openAiKey = System.getenv("OPENAI_API_KEY");
-        String ollamaUrl = System.getenv("OLLAMA_URL");
-
-        if (openAiKey != null && !openAiKey.isBlank()) {
+        // 1. Check for Groq API Key
+        String groqKey = System.getenv("GROQ_API_KEY");
+        if (groqKey != null && !groqKey.isBlank()) {
             try {
-                TextToSqlResponseDTO llmResult = callOpenAi(prompt, openAiKey);
-                if (llmResult != null) return llmResult;
+                TextToSqlResponseDTO groqResult = callGroq(prompt, groqKey);
+                if (groqResult != null) {
+                    log.info("Successfully generated SQL using Groq LLM inference for prompt: '{}'", prompt);
+                    return groqResult;
+                }
             } catch (Exception e) {
-                log.warn("OpenAI NL-to-SQL invocation failed, falling back to local semantic engine: {}", e.getMessage());
-            }
-        } else if (ollamaUrl != null && !ollamaUrl.isBlank()) {
-            try {
-                TextToSqlResponseDTO ollamaResult = callOllama(prompt, ollamaUrl);
-                if (ollamaResult != null) return ollamaResult;
-            } catch (Exception e) {
-                log.warn("Ollama NL-to-SQL invocation failed, falling back to local semantic engine: {}", e.getMessage());
+                log.warn("Groq LLM invocation failed, falling back to local semantic engine: {}", e.getMessage());
             }
         }
 
-        // Built-in Semantic Natural Language Engine (Works 100% offline, zero-config)
+        // 2. Built-in Deterministic Semantic Natural Language Engine (100% offline fallback)
         return resolveSemanticQuery(lower, prompt);
+    }
+
+    private TextToSqlResponseDTO callGroq(String prompt, String apiKey) throws Exception {
+        String systemPrompt = """
+            You are an expert SQL engineer for the FinLake Trino Distributed Lakehouse.
+            Respond with ONLY valid JSON with this exact structure:
+            {
+              "sql": "<ANSI SQL query compatible with Trino>",
+              "explanation": "<short explanation of business logic>",
+              "catalog": "hive or iceberg",
+              "schema": "finlake_curated or finlake_iceberg",
+              "suggested_chart": "bar or line or area or pie or table",
+              "suggested_x": "<dimension column or null>",
+              "suggested_y": "<metric column or null>"
+            }
+
+            Available Tables in hive.finlake_curated:
+            1. customer (customer_id, first_name, last_name, email, city, created_at)
+            2. invoice (invoice_id, customer_id, invoice_date, amount, status)
+            3. payment (payment_id, invoice_id, payment_date, amount, payment_method)
+            4. transactions (step, type, amount, name_orig, oldbalance_org, newbalance_orig, name_dest, oldbalance_dest, newbalance_dest, is_fraud, is_flagged_fraud)
+
+            Available Tables in iceberg.finlake_iceberg:
+            1. "transactions$snapshots" (snapshot_id, parent_id, operation, committed_at)
+
+            Rules:
+            - Always use ANSI SQL syntax compatible with Trino.
+            - Fully qualify table names with catalog and schema (e.g. hive.finlake_curated.customer).
+            - When joining customer, invoice, and payment, join customer.customer_id = invoice.customer_id and invoice.invoice_id = payment.invoice_id.
+            - For aggregations (COUNT, SUM, AVG), always provide meaningful aliases (e.g. total_volume, count).
+            - Do not include markdown code blocks or backticks. Return raw JSON only.
+            """;
+
+        Map<String, Object> reqBody = new HashMap<>();
+        reqBody.put("model", "openai/gpt-oss-120b");
+        reqBody.put("temperature", 0.1);
+        reqBody.put("response_format", Map.of("type", "json_object"));
+        reqBody.put("messages", List.of(
+            Map.of("role", "system", "content", systemPrompt),
+            Map.of("role", "user", "content", prompt)
+        ));
+
+        String jsonPayload = objectMapper.writeValueAsString(reqBody);
+
+        HttpRequest request = HttpRequest.newBuilder()
+            .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
+            .header("Authorization", "Bearer " + apiKey)
+            .header("Content-Type", "application/json")
+            .timeout(Duration.ofSeconds(8))
+            .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+            .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 200) {
+            JsonNode root = objectMapper.readTree(response.body());
+            JsonNode choices = root.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                String content = choices.get(0).path("message").path("content").asText();
+                JsonNode parsedContent = objectMapper.readTree(content);
+
+                String sql = parsedContent.path("sql").asText();
+                String explanation = parsedContent.path("explanation").asText();
+                String catalog = parsedContent.path("catalog").asText("hive");
+                String schema = parsedContent.path("schema").asText("finlake_curated");
+                String suggestedChart = parsedContent.path("suggested_chart").asText("table");
+                String suggestedX = parsedContent.hasNonNull("suggested_x") ? parsedContent.path("suggested_x").asText() : null;
+                String suggestedY = parsedContent.hasNonNull("suggested_y") ? parsedContent.path("suggested_y").asText() : null;
+
+                if (sql != null && !sql.isBlank()) {
+                    return new TextToSqlResponseDTO(
+                        sql,
+                        explanation,
+                        catalog,
+                        schema,
+                        suggestedChart,
+                        suggestedX,
+                        suggestedY
+                    );
+                }
+            }
+        } else {
+            log.warn("Groq API returned HTTP {}: {}", response.statusCode(), response.body());
+        }
+
+        return null;
     }
 
     private TextToSqlResponseDTO resolveSemanticQuery(String lower, String rawPrompt) {
@@ -220,15 +309,5 @@ public class AiTextToSqlService {
             }
         }
         return defaultLimit;
-    }
-
-    private TextToSqlResponseDTO callOpenAi(String prompt, String apiKey) {
-        // Optional cloud LLM integration placeholder
-        return null;
-    }
-
-    private TextToSqlResponseDTO callOllama(String prompt, String ollamaUrl) {
-        // Optional local Ollama integration placeholder
-        return null;
     }
 }
