@@ -1,10 +1,9 @@
 # FinLake Control Plane — Guide et Exemples API REST
 
-**Version** : 1.0  
-**Phase** : P5 — API REST & Orchestration des Jobs  
-**Date** : 2026-11-18  
-**Base URL** : `http://localhost:8000` (ou hôte configuré)  
-**OpenAPI / Swagger UI** : `http://localhost:8000/docs`  
+**Version** : 2.0  
+**Phase** : Architecture Unifiée Java 21 / Spring Boot 3.3.5  
+**Mise à jour** : 2026-11-20  
+**Base URL** : `http://localhost:8000`  
 
 ---
 
@@ -15,7 +14,7 @@ stateDiagram-v2
     [*] --> PENDING : POST /storage/jobs (202 Accepted)
     PENDING --> RUNNING : Worker alloué & extraction démarrée
     RUNNING --> SUCCESS : Extraction + MinIO Staging + Promotion + Manifeste
-    RUNNING --> FAILED : Erreur réseau / SQL / PyArrow / MinIO
+    RUNNING --> FAILED : Erreur réseau / SQL / MinIO
     PENDING --> CANCELLED : POST /storage/jobs/{id}/cancel
     RUNNING --> CANCELLED : POST /storage/jobs/{id}/cancel
     FAILED --> PENDING : POST /storage/jobs/{id}/retry
@@ -27,242 +26,306 @@ stateDiagram-v2
 
 ---
 
-## 2. Exemples d'Appels `curl` par Endpoint
+## 2. Endpoints du Module Data Sources (Wireframe-Compliant)
 
-### 2.1 Santé du Système (`GET /health`)
-Vérifie la disponibilité opérationnelle de SQL Server, MinIO et Trino.
+### 2.1 Liste des Sources Configruées (`GET /sources`)
+Retourne l'ensemble des sources relationnelles avec leur statut opérationnel et les métadonnées de version.
 
 ```bash
-curl -X GET http://localhost:8000/health
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "status": "healthy",
-  "services": {
-    "sqlserver": "up",
-    "minio": "up",
-    "trino": "up"
-  },
-  "timestamp": "2026-11-18T19:40:00.000000Z"
-}
-```
-
----
-
-### 2.2 Liste des Sources (`GET /sources`)
-```bash
+# cURL
 curl -X GET http://localhost:8000/sources
+
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:8000/sources" -Method Get | ConvertTo-Json -Depth 4
 ```
 
 **Réponse (200 OK) :**
 ```json
 [
   {
-    "id": "sqlserver",
-    "type": "relational/sqlserver",
-    "database": "finlake_source",
-    "host": "127.0.0.1",
+    "id": "erp-production",
+    "name": "erp-production",
+    "type": "SQL Server",
+    "host": "sqlserver:1433",
     "port": 1433,
-    "description": "Microsoft SQL Server 2022 transactional store (PaySim source)."
+    "database": "finlake_source",
+    "status": "connected",
+    "status_hint": null,
+    "last_tested": "2026-11-20T10:42:23.421",
+    "server_version": "Microsoft SQL Server 2022"
+  },
+  {
+    "id": "retail-pos-pg",
+    "name": "retail-pos-pg",
+    "type": "PostgreSQL",
+    "host": "postgres-source:5432",
+    "port": 5432,
+    "database": "retail_banking",
+    "status": "connected",
+    "status_hint": null,
+    "last_tested": "2026-11-20T12:42:58.602",
+    "server_version": "PostgreSQL 16.15 on x86_64-pc-linux-musl"
+  },
+  {
+    "id": "finance-dwh",
+    "name": "finance-dwh",
+    "type": "SQL Server",
+    "host": "10.24.8.31:1433",
+    "port": 1433,
+    "database": "FinanceDW",
+    "status": "failed",
+    "status_hint": "Identifiants refusés par le serveur",
+    "last_tested": "2026-11-19T12:42:23.421",
+    "server_version": null
   }
 ]
 ```
 
 ---
 
-### 2.3 Test de Connexion d'une Source (`POST /sources/{id}/test`)
-```bash
-curl -X POST http://localhost:8000/sources/sqlserver/test
-```
+### 2.2 Sonde de Connectivité en 4 Étapes (`POST /sources/probe`)
+Valide la connectivité réseau, TLS, l'authentification et l'accès physique à la base de données sans rien enregistrer. Retourne les tables réelles découvertes comme preuve de connexion active.
 
-**Réponse (200 OK) :**
-```json
-{
-  "source_id": "sqlserver",
-  "status": "connected",
-  "server_version": "Microsoft SQL Server 2022 (RTM-CU14) ...",
-  "database": "finlake_source",
-  "error": null
-}
-```
-
----
-
-### 2.4 Liste des Tables (`GET /sources/{id}/tables`)
-```bash
-curl -X GET "http://localhost:8000/sources/sqlserver/tables?schema=dbo"
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "source_id": "sqlserver",
-  "schema_name": "dbo",
-  "tables": [
-    "ingestion_jobs",
-    "job_runs",
-    "transactions"
-  ]
-}
-```
-
----
-
-### 2.5 Schéma d'une Table (`GET /sources/{id}/tables/{table}/schema`)
-```bash
-curl -X GET "http://localhost:8000/sources/sqlserver/tables/transactions/schema?schema=dbo"
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "source_id": "sqlserver",
-  "schema_name": "dbo",
-  "table_name": "transactions",
-  "columns": [
-    {"name": "ingest_row_id", "type": "BIGINT", "nullable": false},
-    {"name": "step", "type": "INT", "nullable": false},
-    {"name": "type", "type": "VARCHAR(32)", "nullable": false},
-    {"name": "amount", "type": "DECIMAL(19,4)", "nullable": false},
-    {"name": "nameOrig", "type": "VARCHAR(64)", "nullable": false},
-    {"name": "oldbalanceOrg", "type": "DECIMAL(19,4)", "nullable": false},
-    {"name": "newbalanceOrig", "type": "DECIMAL(19,4)", "nullable": false},
-    {"name": "nameDest", "type": "VARCHAR(64)", "nullable": false},
-    {"name": "oldbalanceDest", "type": "DECIMAL(19,4)", "nullable": false},
-    {"name": "newbalanceDest", "type": "DECIMAL(19,4)", "nullable": false},
-    {"name": "isFraud", "type": "BIT", "nullable": false},
-    {"name": "isFlaggedFraud", "type": "BIT", "nullable": false}
-  ]
-}
-```
-
----
-
-### 2.6 Création d'un Job d'Ingestion (`POST /storage/jobs`)
-Déclenche une extraction asynchrone sans bloquer l'appelant.
+#### Exemple A : Test Réussi (PostgreSQL)
 
 ```bash
-curl -X POST http://localhost:8000/storage/jobs \
+# cURL
+curl -X POST http://localhost:8000/sources/probe \
   -H "Content-Type: application/json" \
   -d '{
-    "source_id": "sqlserver",
-    "schema_name": "dbo",
-    "table": "transactions",
-    "format": "parquet",
-    "compression": "snappy",
-    "batch_size": 50000,
-    "partition_by": ["event_date"]
+    "connection_name": "retail-pos-pg",
+    "type": "postgresql",
+    "host": "postgres-source",
+    "port": 5432,
+    "database": "retail_banking",
+    "username": "finlake_user",
+    "password": "FinLake2026!StrongPass#"
   }'
+```
+
+```powershell
+# PowerShell
+$body = @{
+    connection_name = "retail-pos-pg"
+    type = "postgresql"
+    host = "postgres-source"
+    port = 5432
+    database = "retail_banking"
+    username = "finlake_user"
+    password = "FinLake2026!StrongPass#"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/sources/probe" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json -Depth 5
+```
+
+**Réponse (200 OK — Succès) :**
+```json
+{
+  "status": "success",
+  "summary": "La plateforme a joint le serveur, s'est authentifiée et a ouvert retail_banking.",
+  "server_version": "PostgreSQL 16.15 on x86_64-pc-linux-musl, compiled by gcc (Alpine",
+  "response_time_ms": 284,
+  "tested_at": "2026-11-20T12:42:33.363865",
+  "steps": [
+    { "id": 1, "name": "Joindre le serveur", "detail": "postgres-source:5432", "status": "success" },
+    { "id": 2, "name": "Sécuriser la connexion", "detail": "Chiffrée (TLS)", "status": "success" },
+    { "id": 3, "name": "S'authentifier", "detail": "En tant que finlake_user", "status": "success" },
+    { "id": 4, "name": "Ouvrir la base de données", "detail": "retail_banking (2 tables en ligne)", "status": "success" }
+  ],
+  "technical_details": null,
+  "troubleshooting_checklist": [],
+  "discovered_tables": [
+    "retail_customers",
+    "retail_transactions"
+  ]
+}
+```
+
+#### Exemple B : Échec d'Authentification (SQL Server)
+
+```bash
+curl -X POST http://localhost:8000/sources/probe \
+  -H "Content-Type: application/json" \
+  -d '{
+    "connection_name": "erp-production",
+    "type": "sqlserver",
+    "host": "sqlserver",
+    "port": 1433,
+    "database": "finlake_source",
+    "username": "sa",
+    "password": "WrongPassword!"
+  }'
+```
+
+**Réponse (200 OK — Échec diagnostiqué) :**
+```json
+{
+  "status": "failed",
+  "summary": "Échec de la connexion à l'authentification. Le serveur a été joint, mais il a refusé le nom d'utilisateur ou le mot de passe.",
+  "server_version": null,
+  "response_time_ms": 50,
+  "tested_at": "2026-11-20T12:30:17.353",
+  "steps": [
+    { "id": 1, "name": "Joindre le serveur", "detail": "sqlserver:1433", "status": "success" },
+    { "id": 2, "name": "Sécuriser la connexion", "detail": "Chiffrée (TLS)", "status": "success" },
+    { "id": 3, "name": "S'authentifier", "detail": "Identifiants refusés pour sa", "status": "failed" },
+    { "id": 4, "name": "Ouvrir la base de données", "detail": "Non exécutée, car l'authentification a échoué", "status": "skipped" }
+  ],
+  "technical_details": "Erreur 18456 · Login failed for user 'sa'. Échec après 0.1 s",
+  "troubleshooting_checklist": [
+    "Le nom d'utilisateur et le mot de passe sont saisis correctement.",
+    "Le compte est actif et n'est pas verrouillé sur le serveur.",
+    "Le serveur autorise l'authentification SQL Server, et pas seulement l'authentification Windows."
+  ]
+}
+```
+
+---
+
+### 2.3 Enregistrement d'une Nouvelle Source (`POST /sources`)
+Enregistre durablement une source relationnelle dans le registre de la plateforme.
+
+```powershell
+$body = @{
+    connection_name = "retail-pos-pg"
+    type = "postgresql"
+    host = "postgres-source"
+    port = 5432
+    database = "retail_banking"
+    username = "finlake_user"
+    password = "FinLake2026!StrongPass#"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/sources" -Method Post -Body $body -ContentType "application/json" | ConvertTo-Json
+```
+
+**Réponse (201 Created) :**
+```json
+{
+  "id": "retail-pos-pg",
+  "name": "retail-pos-pg",
+  "type": "PostgreSQL",
+  "host": "postgres-source:5432",
+  "port": 5432,
+  "database": "retail_banking",
+  "status": "connected",
+  "status_hint": null,
+  "last_tested": "2026-11-20T12:42:58.602",
+  "server_version": "PostgreSQL 16.15 on x86_64-pc-linux-musl"
+}
+```
+
+---
+
+### 2.4 Liste Dynamique des Tables (`GET /sources/{id}/tables`)
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/sources/retail-pos-pg/tables" -Method Get | ConvertTo-Json
+```
+
+**Réponse (200 OK) :**
+```json
+{
+  "source_id": "retail-pos-pg",
+  "schema_name": "public",
+  "tables": [
+    "retail_customers",
+    "retail_transactions"
+  ]
+}
+```
+
+---
+
+### 2.5 Inspection du Schéma d'une Table (`GET /sources/{id}/tables/{table}/schema`)
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/sources/retail-pos-pg/tables/retail_customers/schema" -Method Get | ConvertTo-Json -Depth 4
+```
+
+**Réponse (200 OK) :**
+```json
+{
+  "source_id": "retail-pos-pg",
+  "schema_name": "public",
+  "table_name": "retail_customers",
+  "total_rows": 3,
+  "column_count": 5,
+  "primary_key": [
+    "customer_id"
+  ],
+  "columns": [
+    { "name": "customer_id", "type": "integer", "nullable": false, "is_primary_key": true, "is_identity": false },
+    { "name": "customer_name", "type": "character varying", "nullable": false, "is_primary_key": false, "is_identity": false },
+    { "name": "segment", "type": "character varying", "nullable": false, "is_primary_key": false, "is_identity": false },
+    { "name": "country", "type": "character varying", "nullable": true, "is_primary_key": false, "is_identity": false },
+    { "name": "created_at", "type": "timestamp without time zone", "nullable": true, "is_primary_key": false, "is_identity": false }
+  ]
+}
+```
+
+---
+
+## 3. Endpoints des Jobs d'Ingestion Parquet
+
+### 3.1 Soumission d'un Job d'Ingestion (`POST /storage/jobs`)
+
+```powershell
+$jobReq = @{
+    source_id = "erp-production"
+    schema_name = "dbo"
+    table = "transactions"
+    format = "parquet"
+    compression = "snappy"
+    batch_size = 50000
+    max_rows = 100000
+    partition_by = @("event_date")
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/storage/jobs" -Method Post -Body $jobReq -ContentType "application/json" | ConvertTo-Json
 ```
 
 **Réponse (202 Accepted) :**
 ```json
 {
-  "job_id": "job_a1b2c3d4",
-  "status": "ACCEPTED",
-  "message": "Ingestion job 'job_a1b2c3d4' queued for background processing.",
-  "created_at": "2026-11-18T19:40:00.000000Z"
-}
-```
-
----
-
-### 2.7 Statut d'un Job (`GET /storage/jobs/{id}`)
-```bash
-curl -X GET http://localhost:8000/storage/jobs/job_a1b2c3d4
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "job_id": "job_a1b2c3d4",
-  "source_id": "sqlserver",
-  "schema_name": "dbo",
-  "table_name": "transactions",
+  "job_id": "job_d98f7e2a-1b4c-4e89-a9a3-5b8d7c2a1e0f",
+  "status": "PENDING",
+  "source_id": "erp-production",
+  "table": "transactions",
   "format": "parquet",
   "compression": "snappy",
   "batch_size": 50000,
-  "partition_columns": "event_date",
-  "status": "SUCCESS",
-  "created_at": "2026-11-18T19:40:00Z",
-  "updated_at": "2026-11-18T19:40:15Z",
-  "latest_run": {
-    "run_id": "run_20261118_194000_123456",
-    "status": "SUCCESS",
-    "total_rows_extracted": 50000,
-    "total_bytes_written": 2654320,
-    "total_objects_created": 3,
-    "manifest_path": "s3://finlake/manifests/paysim/transactions/run_20261118_194000_123456.json",
-    "started_at": "2026-11-18T19:40:01Z",
-    "completed_at": "2026-11-18T19:40:15Z"
-  }
+  "max_rows": 100000,
+  "created_at": "2026-11-20T12:00:00Z"
 }
+```
+
+### 3.2 Suivi d'État d'un Job (`GET /storage/jobs/{id}`)
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/storage/jobs/job_d98f7e2a-1b4c-4e89-a9a3-5b8d7c2a1e0f" -Method Get | ConvertTo-Json
 ```
 
 ---
 
-### 2.8 Résultat & Manifeste d'un Job (`GET /storage/jobs/{id}/result`)
-```bash
-curl -X GET http://localhost:8000/storage/jobs/job_a1b2c3d4/result
+## 4. Endpoints Analytiques & Copilot IA
+
+### 4.1 Exécution de Requête Trino (`POST /api/analytics/query`)
+
+```powershell
+$queryReq = @{
+    sql = "SELECT type, COUNT(*) AS count_tx, ROUND(AVG(amount), 2) AS avg_amt FROM hive.finlake_curated.transactions GROUP BY type ORDER BY count_tx DESC"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://localhost:8000/api/analytics/query" -Method Post -Body $queryReq -ContentType "application/json" | ConvertTo-Json -Depth 4
 ```
 
-**Réponse (200 OK) :**
-```json
-{
-  "job_id": "job_a1b2c3d4",
-  "run_id": "run_20261118_194000_123456",
-  "status": "SUCCESS",
-  "total_rows_extracted": 50000,
-  "total_bytes_written": 2654320,
-  "total_objects_created": 3,
-  "manifest_path": "s3://finlake/manifests/paysim/transactions/run_20261118_194000_123456.json",
-  "manifest": {
-    "job_id": "job_a1b2c3d4",
-    "run_id": "run_20261118_194000_123456",
-    "format": "parquet",
-    "compression": "snappy",
-    "row_count_total": 50000,
-    "bytes_total": 2654320,
-    "objects_count": 3,
-    "duration_seconds": 14.25
-  },
-  "duration_seconds": 14.25,
-  "started_at": "2026-11-18T19:40:01Z",
-  "completed_at": "2026-11-18T19:40:15Z",
-  "error_message": null
-}
-```
+### 4.2 Copilot IA Text-to-SQL (`POST /api/copilot/sql`)
 
----
+```powershell
+$copilotReq = @{
+    prompt = "Montre-moi les 5 types de transactions les plus fréquents et leur montant moyen"
+} | ConvertTo-Json
 
-### 2.9 Annulation d'un Job (`POST /storage/jobs/{id}/cancel`)
-```bash
-curl -X POST http://localhost:8000/storage/jobs/job_a1b2c3d4/cancel
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "job_id": "job_a1b2c3d4",
-  "status": "CANCELLED",
-  "message": "Job 'job_a1b2c3d4' marked as CANCELLED."
-}
-```
-
----
-
-### 2.10 Relance d'un Job (`POST /storage/jobs/{id}/retry`)
-```bash
-curl -X POST http://localhost:8000/storage/jobs/job_a1b2c3d4/retry
-```
-
-**Réponse (200 OK) :**
-```json
-{
-  "job_id": "job_a1b2c3d4",
-  "status": "ACCEPTED",
-  "message": "Job 'job_a1b2c3d4' re-queued for processing."
-}
+Invoke-RestMethod -Uri "http://localhost:8000/api/copilot/sql" -Method Post -Body $copilotReq -ContentType "application/json" | ConvertTo-Json
 ```
