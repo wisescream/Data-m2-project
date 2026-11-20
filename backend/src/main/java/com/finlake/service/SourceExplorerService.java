@@ -397,16 +397,6 @@ public class SourceExplorerService {
             ORDER BY c.ORDINAL_POSITION
             """;
 
-        List<ColumnSchemaDTO> columns = jdbcTemplate.query(colSql, (rs, rowNum) -> new ColumnSchemaDTO(
-                rs.getString("COLUMN_NAME"),
-                rs.getString("DATA_TYPE"),
-                rs.getObject("CHARACTER_MAXIMUM_LENGTH") != null ? rs.getInt("CHARACTER_MAXIMUM_LENGTH") : null,
-                rs.getObject("NUMERIC_PRECISION") != null ? rs.getInt("NUMERIC_PRECISION") : null,
-                rs.getObject("NUMERIC_SCALE") != null ? rs.getInt("NUMERIC_SCALE") : null,
-                "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
-                rs.getInt("is_identity") == 1
-        ), validSchema, validTable);
-
         String pkSql = """
             SELECT kcu.COLUMN_NAME
             FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -420,6 +410,38 @@ public class SourceExplorerService {
         List<String> pkCols = jdbcTemplate.query(pkSql, (rs, rowNum) -> rs.getString("COLUMN_NAME"), validSchema, validTable);
         Set<String> pkSet = new HashSet<>(pkCols);
 
-        return new TableSchemaResponseDTO(sourceId, validSchema, validTable, columns, new ArrayList<>(pkSet));
+        List<ColumnSchemaDTO> columns = jdbcTemplate.query(colSql, (rs, rowNum) -> {
+            String colName = rs.getString("COLUMN_NAME");
+            return new ColumnSchemaDTO(
+                    colName,
+                    rs.getString("DATA_TYPE"),
+                    "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
+                    pkSet.contains(colName),
+                    rs.getInt("is_identity") == 1
+            );
+        }, validSchema, validTable);
+
+        long totalRows = 0L;
+        try {
+            Long count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT_BIG(*) FROM [" + validSchema + "].[" + validTable + "]",
+                    Long.class
+            );
+            if (count != null) {
+                totalRows = count;
+            }
+        } catch (Exception e) {
+            log.warn("Could not retrieve row count for {}.{}: {}", validSchema, validTable, e.getMessage());
+        }
+
+        return new TableSchemaResponseDTO(
+                sourceId,
+                validSchema,
+                validTable,
+                totalRows,
+                columns.size(),
+                new ArrayList<>(pkSet),
+                columns
+        );
     }
 }
