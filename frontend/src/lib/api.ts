@@ -55,6 +55,7 @@ export interface SourceProbeResponse {
   steps: SourceProbeStep[];
   technical_details?: string;
   troubleshooting_checklist: string[];
+  discovered_tables?: string[];
 }
 
 export async function fetchSources(): Promise<DataSourceItem[]> {

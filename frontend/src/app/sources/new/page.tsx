@@ -18,7 +18,9 @@ import {
   CheckCircle2, 
   Info,
   ShieldCheck,
-  Server
+  Server,
+  Layers,
+  Table as TableIcon
 } from "lucide-react";
 import { probeSourceConnection, registerSource, SourceProbeRequest, SourceProbeResponse, SourceProbeStep } from "@/lib/api";
 
@@ -82,6 +84,93 @@ export default function NewSourcePage() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres") => {
+    let demoPayload: SourceProbeRequest;
+    if (targetEngine === "postgres") {
+      setDbType("PostgreSQL");
+      setConnectionName("retail-pos-pg");
+      setHost("postgres-source");
+      setPort(5432);
+      setDatabase("retail_banking");
+      setAuthMethod("Authentification standard (mot de passe)");
+      setUsername("finlake_user");
+      setPassword("FinLake2026!StrongPass#");
+      demoPayload = {
+        connection_name: "retail-pos-pg",
+        type: "postgresql",
+        host: "postgres-source",
+        port: 5432,
+        database: "retail_banking",
+        auth_method: "postgresql",
+        username: "finlake_user",
+        password: "FinLake2026!StrongPass#",
+        encrypt: true,
+        trust_server_certificate: true,
+        connection_timeout: 30,
+      };
+    } else {
+      setDbType("Microsoft SQL Server");
+      setConnectionName("erp-production");
+      setHost("sqlserver");
+      setPort(1433);
+      setDatabase("finlake_source");
+      setAuthMethod("Authentification SQL Server");
+      setUsername("sa");
+      setPassword("FinLake2026!StrongPass#");
+      demoPayload = {
+        connection_name: "erp-production",
+        type: "sqlserver",
+        host: "sqlserver",
+        port: 1433,
+        database: "finlake_source",
+        auth_method: "sqlserver",
+        username: "sa",
+        password: "FinLake2026!StrongPass#",
+        encrypt: true,
+        trust_server_certificate: true,
+        connection_timeout: 30,
+      };
+    }
+
+    setTestState("running");
+    setProbeResult(null);
+    setElapsedSeconds(0);
+    setCurrentStepIndex(1);
+
+    const startTime = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+
+    try {
+      const res = await probeSourceConnection(demoPayload);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setProbeResult(res);
+      setTestState(res.status === "success" ? "success" : "failed");
+    } catch (err: any) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setTestState("failed");
+      setProbeResult({
+        status: "failed",
+        summary: "Impossible de joindre le serveur. Vérifiez les paramètres de connexion.",
+        response_time_ms: 1200,
+        tested_at: new Date().toISOString(),
+        steps: [
+          { id: 1, name: "Joindre le serveur", detail: `${demoPayload.host}:${demoPayload.port} (${err.message})`, status: "failed" },
+          { id: 2, name: "Sécuriser la connexion", detail: "Chiffrée (TLS)", status: "skipped" },
+          { id: 3, name: "S'authentifier", detail: `En tant que ${demoPayload.username}`, status: "skipped" },
+          { id: 4, name: "Ouvrir la base de données", detail: demoPayload.database, status: "skipped" },
+        ],
+        technical_details: `Erreur : ${err.message}`,
+        troubleshooting_checklist: [
+          "Le conteneur ou serveur est en cours d'exécution sur Docker.",
+          "Les identifiants et le port sont corrects."
+        ]
+      });
+    }
+  };
 
   const handleRunTest = async () => {
     setTestState("running");
@@ -203,6 +292,50 @@ export default function NewSourcePage() {
           </p>
         </div>
       )}
+
+      {/* ------------------------------------------------------------------- */}
+      {/* 1-Click Demo Presets Bar (Call Demonstration Accelerator)            */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/70 via-indigo-950/50 to-slate-900 border border-blue-800/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
+            <Zap className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              Démonstration en direct · Remplissage et Test en 1 Clic
+              <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-medium border border-blue-400/30">
+                Mode Démo
+              </span>
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Injectez instantanément tous les paramètres de connexion d’un conteneur Docker actif et lancez la vérification live.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={testState === "running"}
+            onClick={() => handleQuickDemo("sqlserver")}
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition flex items-center gap-2 shadow-sm disabled:opacity-40"
+          >
+            <Server className="h-3.5 w-3.5 text-blue-400" />
+            <span>⚡ Démo SQL Server 2022</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={testState === "running"}
+            onClick={() => handleQuickDemo("postgres")}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 border border-indigo-400/40 text-xs font-bold text-white transition flex items-center gap-2 shadow-md shadow-indigo-600/20 disabled:opacity-40"
+          >
+            <Database className="h-3.5 w-3.5 text-indigo-200" />
+            <span>⚡ Démo PostgreSQL 16</span>
+          </button>
+        </div>
+      </div>
 
       {/* ------------------------------------------------------------------- */}
       {/* Main 2-Column Layout (Form 2/3 + Test Panel 1/3)                    */}
@@ -654,6 +787,35 @@ export default function NewSourcePage() {
                   </span>
                 </div>
               </div>
+
+              {/* Proof of Active Discovered Data */}
+              {probeResult.discovered_tables && probeResult.discovered_tables.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-emerald-500/40 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="h-3.5 w-3.5 text-emerald-400" />
+                      Preuve de connexion active
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 font-medium border border-emerald-500/20">
+                      {probeResult.discovered_tables.length} table(s) en direct
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-snug">
+                    Interrogation réelle réussie sur <span className="font-mono text-white">{database}</span>. Données accessibles :
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {probeResult.discovered_tables.map((tbl) => (
+                      <span
+                        key={tbl}
+                        className="px-2 py-1 rounded-lg bg-emerald-950/70 border border-emerald-800/70 text-emerald-300 font-mono text-[11px] flex items-center gap-1 shadow-sm"
+                      >
+                        <TableIcon className="h-3 w-3 text-emerald-400" />
+                        {tbl}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <p className="text-[11px] text-slate-400 leading-relaxed">
                 Enregistrez la connexion pour l’ajouter à Data Sources.

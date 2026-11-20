@@ -12,5 +12,19 @@ public record SourceProbeResponseDTO(
     @JsonProperty("tested_at") LocalDateTime testedAt,
     @JsonProperty("steps") List<SourceProbeStepDTO> steps,
     @JsonProperty("technical_details") String technicalDetails,
-    @JsonProperty("troubleshooting_checklist") List<String> troubleshootingChecklist
-) {}
+    @JsonProperty("troubleshooting_checklist") List<String> troubleshootingChecklist,
+    @JsonProperty("discovered_tables") List<String> discoveredTables
+) {
+    public SourceProbeResponseDTO(
+            String status,
+            String summary,
+            String serverVersion,
+            long responseTimeMs,
+            LocalDateTime testedAt,
+            List<SourceProbeStepDTO> steps,
+            String technicalDetails,
+            List<String> troubleshootingChecklist
+    ) {
+        this(status, summary, serverVersion, responseTimeMs, testedAt, steps, technicalDetails, troubleshootingChecklist, List.of());
+    }
+}

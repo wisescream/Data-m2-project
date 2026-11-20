@@ -11,7 +11,9 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -71,7 +73,26 @@ public class SourceExplorerService {
                 false, true, 30
         ));
 
-        // 2. CRM Sales Source
+        // 2. Secondary Live Source (mapped to finlake-postgres-source)
+        sourceRegistry.put("retail-pos-pg", new DataSourceItemDTO(
+                "retail-pos-pg",
+                "retail-pos-pg",
+                "PostgreSQL",
+                "postgres-source:5432",
+                5432,
+                "retail_banking",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(10),
+                "PostgreSQL 16.15 (Alpine)"
+        ));
+        sourceConfigs.put("retail-pos-pg", new SourceProbeRequestDTO(
+                "retail-pos-pg", "postgresql", "postgres-source", 5432,
+                "retail_banking", "postgresql", "finlake_user", "FinLake2026!StrongPass#",
+                false, true, 30
+        ));
+
+        // 3. CRM Sales Source
         sourceRegistry.put("crm-sales", new DataSourceItemDTO(
                 "crm-sales",
                 "crm-sales",
@@ -258,7 +279,22 @@ public class SourceExplorerService {
                 }
             }
 
-            steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", database, "success"));
+            // Query live tables as proof of active data access
+            List<String> discoveredTables = new ArrayList<>();
+            String tableQuery = isPostgres
+                    ? "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name LIMIT 6"
+                    : "SELECT TOP 6 TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
+            try (Statement tblStmt = conn.createStatement();
+                 ResultSet tblRs = tblStmt.executeQuery(tableQuery)) {
+                while (tblRs.next()) {
+                    discoveredTables.add(tblRs.getString(1));
+                }
+            } catch (Exception tblEx) {
+                log.warn("Table discovery query failed during probe: {}", tblEx.getMessage());
+            }
+
+            String step4Detail = database + (discoveredTables.isEmpty() ? "" : " (" + discoveredTables.size() + " tables en ligne)");
+            steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", step4Detail, "success"));
             long duration = System.currentTimeMillis() - start;
 
             return new SourceProbeResponseDTO(
@@ -269,7 +305,8 @@ public class SourceExplorerService {
                     LocalDateTime.now(),
                     steps,
                     null,
-                    List.of()
+                    List.of(),
+                    discoveredTables
             );
 
         } catch (Exception ex) {
@@ -408,71 +445,148 @@ public class SourceExplorerService {
         );
     }
 
+    private Connection getConnectionForSource(String sourceId) throws SQLException {
+        SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        if (config == null) {
+            return jdbcTemplate.getDataSource().getConnection();
+        }
+        boolean isPostgres = (config.type() != null && config.type().toLowerCase().contains("postgres"))
+                || (config.authMethod() != null && config.authMethod().toLowerCase().contains("postgres"))
+                || (config.port() != null && (config.port() == 5432 || config.port() == 5434));
+
+        String host = (config.host() != null && !config.host().isBlank()) ? config.host().trim() : defaultHost;
+        int port = (config.port() != null && config.port() > 0) ? config.port() : (isPostgres ? 5432 : defaultPort);
+        String database = (config.database() != null && !config.database().isBlank()) ? config.database().trim() : (isPostgres ? "retail_banking" : "finlake_source");
+        String user = (config.username() != null) ? config.username().trim() : (isPostgres ? "finlake_user" : defaultUser);
+        String pass = (config.password() != null) ? config.password() : "";
+
+        if (isPostgres) {
+            String sslParam = (config.encrypt() != null && config.encrypt()) ? "sslmode=prefer" : "sslmode=disable";
+            String url = String.format("jdbc:postgresql://%s:%d/%s?%s&loginTimeout=10", host, port, database, sslParam);
+            return DriverManager.getConnection(url, user, pass);
+        } else {
+            boolean encrypt = config.encrypt() != null ? config.encrypt() : true;
+            boolean trustCert = config.trustServerCertificate() != null ? config.trustServerCertificate() : true;
+            String url = String.format(
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=%b;trustServerCertificate=%b;loginTimeout=10",
+                    host, port, database, encrypt, trustCert
+            );
+            return DriverManager.getConnection(url, user, pass);
+        }
+    }
+
     public TableListResponseDTO listTables(String sourceId, String schema) {
-        String validSchema = validateIdentifier(schema);
+        SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        boolean isPostgres = config != null && (
+                (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
+                (config.port() != null && (config.port() == 5432 || config.port() == 5434))
+        );
+        String targetSchema = (isPostgres && ("dbo".equalsIgnoreCase(schema) || schema == null)) ? "public" : schema;
+        String validSchema = validateIdentifier(targetSchema);
+
         String sql = """
             SELECT TABLE_NAME 
             FROM INFORMATION_SCHEMA.TABLES 
             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
             ORDER BY TABLE_NAME
             """;
-        List<String> tables = jdbcTemplate.query(sql, (rs, rowNum) -> rs.getString("TABLE_NAME"), validSchema);
+        List<String> tables = new ArrayList<>();
+        try (Connection conn = getConnectionForSource(sourceId);
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, validSchema);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    tables.add(rs.getString("TABLE_NAME"));
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to list tables for source {}: {}", sourceId, e.getMessage());
+        }
         return new TableListResponseDTO(sourceId, validSchema, tables);
     }
 
     public TableSchemaResponseDTO describeTable(String sourceId, String schema, String table) {
-        String validSchema = validateIdentifier(schema);
+        SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        boolean isPostgres = config != null && (
+                (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
+                (config.port() != null && (config.port() == 5432 || config.port() == 5434))
+        );
+        String targetSchema = (isPostgres && ("dbo".equalsIgnoreCase(schema) || schema == null)) ? "public" : schema;
+        String validSchema = validateIdentifier(targetSchema);
         String validTable = validateIdentifier(table);
 
-        String colSql = """
-            SELECT 
-                c.COLUMN_NAME,
-                c.DATA_TYPE,
-                c.CHARACTER_MAXIMUM_LENGTH,
-                c.NUMERIC_PRECISION,
-                c.NUMERIC_SCALE,
-                c.IS_NULLABLE,
-                COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS is_identity
-            FROM INFORMATION_SCHEMA.COLUMNS c
-            WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
-            ORDER BY c.ORDINAL_POSITION
-            """;
-
-        String pkSql = """
-            SELECT kcu.COLUMN_NAME
-            FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-            JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
-                ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
-                AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
-            WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
-                AND tc.TABLE_SCHEMA = ?
-                AND tc.TABLE_NAME = ?
-            """;
-        List<String> pkCols = jdbcTemplate.query(pkSql, (rs, rowNum) -> rs.getString("COLUMN_NAME"), validSchema, validTable);
-        Set<String> pkSet = new HashSet<>(pkCols);
-
-        List<ColumnSchemaDTO> columns = jdbcTemplate.query(colSql, (rs, rowNum) -> {
-            String colName = rs.getString("COLUMN_NAME");
-            return new ColumnSchemaDTO(
-                    colName,
-                    rs.getString("DATA_TYPE"),
-                    "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
-                    pkSet.contains(colName),
-                    rs.getInt("is_identity") == 1
-            );
-        }, validSchema, validTable);
-
+        List<ColumnSchemaDTO> columns = new ArrayList<>();
+        Set<String> pkSet = new HashSet<>();
         long totalRows = 0L;
-        try {
-            Long count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT_BIG(*) FROM [" + validSchema + "].[" + validTable + "]",
-                    Long.class
-            );
-            if (count != null) {
-                totalRows = count;
+
+        try (Connection conn = getConnectionForSource(sourceId)) {
+            // 1. Primary keys
+            String pkSql = """
+                SELECT kcu.COLUMN_NAME
+                FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+                JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+                    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+                    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+                WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+                    AND tc.TABLE_SCHEMA = ?
+                    AND tc.TABLE_NAME = ?
+                """;
+            try (PreparedStatement psPk = conn.prepareStatement(pkSql)) {
+                psPk.setString(1, validSchema);
+                psPk.setString(2, validTable);
+                try (ResultSet rs = psPk.executeQuery()) {
+                    while (rs.next()) {
+                        pkSet.add(rs.getString("COLUMN_NAME"));
+                    }
+                }
+            }
+
+            // 2. Columns
+            String colSql = isPostgres
+                    ? """
+                      SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE, (c.IS_IDENTITY = 'YES') AS is_identity
+                      FROM INFORMATION_SCHEMA.COLUMNS c
+                      WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
+                      ORDER BY c.ORDINAL_POSITION
+                      """
+                    : """
+                      SELECT c.COLUMN_NAME, c.DATA_TYPE, c.IS_NULLABLE,
+                             COLUMNPROPERTY(OBJECT_ID(c.TABLE_SCHEMA + '.' + c.TABLE_NAME), c.COLUMN_NAME, 'IsIdentity') AS is_identity
+                      FROM INFORMATION_SCHEMA.COLUMNS c
+                      WHERE c.TABLE_SCHEMA = ? AND c.TABLE_NAME = ?
+                      ORDER BY c.ORDINAL_POSITION
+                      """;
+
+            try (PreparedStatement psCol = conn.prepareStatement(colSql)) {
+                psCol.setString(1, validSchema);
+                psCol.setString(2, validTable);
+                try (ResultSet rs = psCol.executeQuery()) {
+                    while (rs.next()) {
+                        String colName = rs.getString("COLUMN_NAME");
+                        boolean isIdentity = isPostgres ? rs.getBoolean("is_identity") : (rs.getInt("is_identity") == 1);
+                        columns.add(new ColumnSchemaDTO(
+                                colName,
+                                rs.getString("DATA_TYPE"),
+                                "YES".equalsIgnoreCase(rs.getString("IS_NULLABLE")),
+                                pkSet.contains(colName),
+                                isIdentity
+                        ));
+                    }
+                }
+            }
+
+            // 3. Row count
+            String countSql = isPostgres
+                    ? "SELECT COUNT(*) FROM \"" + validSchema + "\".\"" + validTable + "\""
+                    : "SELECT COUNT_BIG(*) FROM [" + validSchema + "].[" + validTable + "]";
+            try (Statement countStmt = conn.createStatement();
+                 ResultSet rs = countStmt.executeQuery(countSql)) {
+                if (rs.next()) {
+                    totalRows = rs.getLong(1);
+                }
             }
         } catch (Exception e) {
-            log.warn("Could not retrieve row count for {}.{}: {}", validSchema, validTable, e.getMessage());
+            log.warn("Failed to describe table {}.{} on source {}: {}", validSchema, validTable, sourceId, e.getMessage());
         }
 
         return new TableSchemaResponseDTO(
