@@ -19,25 +19,25 @@ export default function BenchmarksPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-          <Layers className="h-6 w-6 text-purple-400" />
+      <div className="bg-white border border-zinc-200 p-6 rounded-2xl shadow-xs">
+        <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
+          <Layers className="h-6 w-6 text-purple-600" />
           Ingestion & Query Performance Benchmarks
         </h1>
-        <p className="text-slate-400 text-sm mt-1">
+        <p className="text-zinc-500 text-sm mt-1">
           Empirical measurements across storage formats, compression codecs, batch sizes, and Trino partition pruning.
         </p>
       </div>
 
       {/* Ingestion Matrix */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-          <HardDrive className="h-5 w-5 text-emerald-400" />
+      <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+          <HardDrive className="h-5 w-5 text-emerald-600" />
           Storage Codec & Compression Efficiency
         </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="text-xs text-slate-400 uppercase bg-slate-950/60 border-b border-slate-800">
+        <div className="overflow-x-auto rounded-xl border border-zinc-200">
+          <table className="w-full text-left text-sm text-zinc-700">
+            <thead className="text-xs text-zinc-500 uppercase bg-zinc-50 border-b border-zinc-200">
               <tr>
                 <th className="py-3 px-4">Format</th>
                 <th className="py-3 px-4">Compression</th>
@@ -47,20 +47,20 @@ export default function BenchmarksPage() {
                 <th className="py-3 px-4">Extraction Throughput</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-zinc-100 bg-white">
               {ingestionBenchmarks.map((b) => (
-                <tr key={`${b.format}-${b.compression}`} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-4 font-mono font-medium text-white">{b.format}</td>
-                  <td className="py-3 px-4 font-mono text-xs uppercase">{b.compression}</td>
-                  <td className="py-3 px-4">{b.batch}</td>
-                  <td className="py-3 px-4 font-mono font-bold text-purple-300">{b.size}</td>
+                <tr key={`${b.format}-${b.compression}`} className="hover:bg-zinc-50/80 transition">
+                  <td className="py-3 px-4 font-mono font-medium text-zinc-900">{b.format}</td>
+                  <td className="py-3 px-4 font-mono text-xs uppercase text-zinc-600">{b.compression}</td>
+                  <td className="py-3 px-4 text-zinc-600">{b.batch}</td>
+                  <td className="py-3 px-4 font-mono font-bold text-purple-700">{b.size}</td>
                   <td className="py-3 px-4">
-                    <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold text-xs">
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold text-xs">
                       <TrendingDown className="h-3.5 w-3.5" />
                       {b.ratio}
                     </span>
                   </td>
-                  <td className="py-3 px-4 font-mono text-xs text-blue-400">{b.throughput}</td>
+                  <td className="py-3 px-4 font-mono text-xs text-blue-700 font-semibold">{b.throughput}</td>
                 </tr>
               ))}
             </tbody>
@@ -69,14 +69,14 @@ export default function BenchmarksPage() {
       </div>
 
       {/* Query Speedup Matrix */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-          <Zap className="h-5 w-5 text-amber-400" />
+      <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+        <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+          <Zap className="h-5 w-5 text-amber-500" />
           Trino Partition Pruning Acceleration (event_date)
         </h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-300">
-            <thead className="text-xs text-slate-400 uppercase bg-slate-950/60 border-b border-slate-800">
+        <div className="overflow-x-auto rounded-xl border border-zinc-200">
+          <table className="w-full text-left text-sm text-zinc-700">
+            <thead className="text-xs text-zinc-500 uppercase bg-zinc-50 border-b border-zinc-200">
               <tr>
                 <th className="py-3 px-4">Query Scenario</th>
                 <th className="py-3 px-4">Unpartitioned Latency</th>
@@ -84,14 +84,14 @@ export default function BenchmarksPage() {
                 <th className="py-3 px-4">Latency Reduction</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-zinc-100 bg-white">
               {queryBenchmarks.map((q) => (
-                <tr key={q.query} className="hover:bg-slate-800/40 transition">
-                  <td className="py-3 px-4 font-medium text-white">{q.query}</td>
-                  <td className="py-3 px-4 font-mono text-rose-300">{q.unpartitioned}</td>
-                  <td className="py-3 px-4 font-mono text-emerald-300 font-bold">{q.partitioned}</td>
+                <tr key={q.query} className="hover:bg-zinc-50/80 transition">
+                  <td className="py-3 px-4 font-medium text-zinc-900">{q.query}</td>
+                  <td className="py-3 px-4 font-mono text-rose-600">{q.unpartitioned}</td>
+                  <td className="py-3 px-4 font-mono text-emerald-700 font-bold">{q.partitioned}</td>
                   <td className="py-3 px-4">
-                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-950 text-amber-400 border border-amber-800">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
                       {q.speedup}
                     </span>
                   </td>

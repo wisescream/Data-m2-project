@@ -88,17 +88,17 @@ export default function SecurityGovernancePage() {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="bg-white border border-zinc-200 p-6 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30">
+            <div className="p-2 rounded-xl bg-zinc-100 text-zinc-900 border border-zinc-200">
               <ShieldCheck className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
                 Enterprise Multi-Tenancy, RBAC & Security Governance
               </h1>
-              <p className="text-sm text-slate-400 mt-0.5">
+              <p className="text-sm text-zinc-500 mt-0.5">
                 Isolate enterprise workspaces, enforce dynamic PII masking, and preserve audit trails for SOC2 / GDPR compliance.
               </p>
             </div>
@@ -107,35 +107,35 @@ export default function SecurityGovernancePage() {
 
         {/* Global Security Metrics */}
         <div className="flex items-center gap-3">
-          <div className="bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800 text-center">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Workspaces</p>
-            <p className="text-xl font-bold text-white mt-0.5">{tenants.length}</p>
+          <div className="bg-zinc-50 px-4 py-2.5 rounded-xl border border-zinc-200 text-center">
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Workspaces</p>
+            <p className="text-xl font-bold text-zinc-900 mt-0.5">{tenants.length}</p>
           </div>
-          <div className="bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800 text-center">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Active Personas</p>
-            <p className="text-xl font-bold text-purple-400 mt-0.5">{personas.length}</p>
+          <div className="bg-zinc-50 px-4 py-2.5 rounded-xl border border-zinc-200 text-center">
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Active Personas</p>
+            <p className="text-xl font-bold text-purple-700 mt-0.5">{personas.length}</p>
           </div>
-          <div className="bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800 text-center">
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Audit Records</p>
-            <p className="text-xl font-bold text-emerald-400 mt-0.5">{auditLogs.length}</p>
+          <div className="bg-zinc-50 px-4 py-2.5 rounded-xl border border-zinc-200 text-center">
+            <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">Audit Records</p>
+            <p className="text-xl font-bold text-emerald-700 mt-0.5">{auditLogs.length}</p>
           </div>
         </div>
       </div>
 
       {/* Active Persona / Enterprise Switcher Card */}
       {activePersona && (
-        <div className="bg-gradient-to-r from-purple-950/40 via-slate-900 to-indigo-950/40 border border-purple-500/30 p-5 rounded-2xl shadow-xl space-y-3">
+        <div className="bg-white border border-purple-200 p-5 rounded-2xl shadow-xs space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
                 Current Active Session Context
               </span>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2 mt-1">
+              <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2 mt-1">
                 {activePersona.full_name}
-                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 border border-zinc-200 font-mono">
                   {activePersona.role}
                 </span>
-                <span className="text-xs font-normal text-slate-400">
+                <span className="text-xs font-normal text-zinc-500">
                   ({tenants.find((t) => t.id === activePersona.tenant_id)?.name || activePersona.tenant_id})
                 </span>
               </h2>
@@ -144,20 +144,20 @@ export default function SecurityGovernancePage() {
             {/* PII Masking Status Indicator */}
             <div className="flex items-center gap-2">
               {activePersona.can_view_pii ? (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-950/80 border border-amber-800 text-amber-300 text-xs font-semibold">
-                  <Eye className="h-4 w-4" /> Unmasked PII Access (Auditor / Admin)
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold">
+                  <Eye className="h-4 w-4 text-amber-600" /> Unmasked PII Access (Auditor / Admin)
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs font-semibold">
-                  <EyeOff className="h-4 w-4" /> Dynamic PII Masking Active (Analyst Role)
+                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+                  <EyeOff className="h-4 w-4 text-emerald-600" /> Dynamic PII Masking Active (Analyst Role)
                 </span>
               )}
             </div>
           </div>
 
           {/* Quick Persona Switcher Chips */}
-          <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">
+          <div className="pt-2 border-t border-zinc-100 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mr-1">
               Switch Persona:
             </span>
             {personas.map((p) => (
@@ -166,12 +166,12 @@ export default function SecurityGovernancePage() {
                 onClick={() => handleSelectPersona(p)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
                   activePersona.id === p.id
-                    ? "bg-purple-600 text-white shadow-md shadow-purple-600/30 border border-purple-500"
-                    : "bg-slate-950 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700"
+                    ? "bg-zinc-900 text-white shadow-xs"
+                    : "bg-zinc-100 border border-zinc-200 text-zinc-700 hover:bg-zinc-200/70"
                 }`}
               >
                 <span>{p.full_name}</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/40">
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-200/80 text-zinc-700">
                   {p.role}
                 </span>
               </button>
@@ -181,13 +181,13 @@ export default function SecurityGovernancePage() {
       )}
 
       {/* Main Tab Controls */}
-      <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-1.5 gap-1">
+      <div className="flex items-center bg-zinc-100 border border-zinc-200 rounded-xl p-1 gap-1">
         <button
           onClick={() => setActiveTab("tenants")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
             activeTab === "tenants"
-              ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
-              : "text-slate-400 hover:text-white"
+              ? "bg-white text-zinc-900 shadow-xs border border-zinc-200"
+              : "text-zinc-600 hover:text-zinc-900"
           }`}
         >
           <Building2 className="h-4 w-4" /> Enterprise Workspaces & Isolation
@@ -196,8 +196,8 @@ export default function SecurityGovernancePage() {
           onClick={() => setActiveTab("rbac")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
             activeTab === "rbac"
-              ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
-              : "text-slate-400 hover:text-white"
+              ? "bg-white text-zinc-900 shadow-xs border border-zinc-200"
+              : "text-zinc-600 hover:text-zinc-900"
           }`}
         >
           <Key className="h-4 w-4" /> RBAC Matrix & Dynamic Masking
@@ -206,8 +206,8 @@ export default function SecurityGovernancePage() {
           onClick={() => setActiveTab("audit")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition ${
             activeTab === "audit"
-              ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
-              : "text-slate-400 hover:text-white"
+              ? "bg-white text-zinc-900 shadow-xs border border-zinc-200"
+              : "text-zinc-600 hover:text-zinc-900"
           }`}
         >
           <FileText className="h-4 w-4" /> Enterprise Audit Ledger ({auditLogs.length})
@@ -221,48 +221,48 @@ export default function SecurityGovernancePage() {
             {tenants.map((t) => (
               <div
                 key={t.id}
-                className="bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-5 shadow-xl transition flex flex-col justify-between"
+                className="bg-white border border-zinc-200 hover:border-zinc-300 rounded-2xl p-5 shadow-xs transition flex flex-col justify-between hover:shadow-sm"
               >
                 <div>
-                  <div className="flex items-start justify-between gap-2 border-b border-slate-800/80 pb-3">
+                  <div className="flex items-start justify-between gap-2 border-b border-zinc-100 pb-3">
                     <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
                         {t.tier}
                       </span>
-                      <h3 className="text-lg font-bold text-white mt-1.5">{t.name}</h3>
-                      <p className="text-xs font-mono text-slate-400">Code: {t.code}</p>
+                      <h3 className="text-lg font-bold text-zinc-900 mt-1.5">{t.name}</h3>
+                      <p className="text-xs font-mono text-zinc-500">Code: {t.code}</p>
                     </div>
-                    <Building2 className="h-5 w-5 text-purple-400 shrink-0" />
+                    <Building2 className="h-5 w-5 text-zinc-500 shrink-0" />
                   </div>
 
                   <div className="mt-4 space-y-2 text-xs">
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-zinc-500">
                       <span>Assigned Catalog:</span>
-                      <strong className="text-white font-mono">{t.assigned_catalog}</strong>
+                      <strong className="text-zinc-900 font-mono">{t.assigned_catalog}</strong>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-zinc-500">
                       <span>Assigned Schema:</span>
-                      <strong className="text-purple-300 font-mono">{t.assigned_schema}</strong>
+                      <strong className="text-purple-700 font-mono">{t.assigned_schema}</strong>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-zinc-500">
                       <span>Provisioned Users:</span>
-                      <strong className="text-emerald-400">{t.user_count} seats</strong>
+                      <strong className="text-emerald-700">{t.user_count} seats</strong>
                     </div>
-                    <div className="flex justify-between text-slate-400">
+                    <div className="flex justify-between text-zinc-500">
                       <span>Onboarded:</span>
-                      <strong className="text-slate-300">{t.created_at}</strong>
+                      <strong className="text-zinc-700">{t.created_at}</strong>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-800/80">
-                    <p className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider mb-1.5">
+                  <div className="mt-4 pt-3 border-t border-zinc-100">
+                    <p className="text-[10px] uppercase font-semibold text-zinc-500 tracking-wider mb-1.5">
                       Security & Isolation Features:
                     </p>
                     <div className="flex flex-wrap gap-1">
                       {t.features.map((f) => (
                         <span
                           key={f}
-                          className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] font-medium text-slate-300"
+                          className="px-2 py-0.5 rounded bg-zinc-50 border border-zinc-200 text-[10px] font-medium text-zinc-700"
                         >
                           ✓ {f}
                         </span>
@@ -271,13 +271,13 @@ export default function SecurityGovernancePage() {
                   </div>
                 </div>
 
-                <div className="mt-5 pt-3 border-t border-slate-800 flex items-center justify-between">
-                  <span className="text-xs text-emerald-400 flex items-center gap-1">
+                <div className="mt-5 pt-3 border-t border-zinc-100 flex items-center justify-between">
+                  <span className="text-xs text-emerald-700 flex items-center gap-1 font-medium">
                     <CheckCircle2 className="h-3.5 w-3.5" /> Workspace Active
                   </span>
                   <Link
                     href="/analytics"
-                    className="text-xs text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
+                    className="text-xs text-zinc-900 hover:text-zinc-700 font-semibold flex items-center gap-1"
                   >
                     Open Workspace <ExternalLink className="h-3 w-3" />
                   </Link>
@@ -287,12 +287,12 @@ export default function SecurityGovernancePage() {
           </div>
 
           {/* Architecture Explanation Banner */}
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Database className="h-5 w-5 text-purple-400" />
+          <div className="bg-white border border-zinc-200 p-6 rounded-2xl shadow-xs space-y-3">
+            <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+              <Database className="h-5 w-5 text-zinc-700" />
               How FinLake Isolates Enterprise Data Spaces
             </h3>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-zinc-600 leading-relaxed">
               Every enterprise tenant is provisioned with a logical workspace bound to specific Trino catalogs and MinIO S3 bucket prefix paths. Row-Level Security (RLS) and dynamic column masking are executed on the fly during query evaluation, guaranteeing that <strong>Tenant A can never inspect Tenant B’s financial transactions or PII</strong>.
             </p>
           </div>
@@ -303,14 +303,14 @@ export default function SecurityGovernancePage() {
       {activeTab === "rbac" && (
         <div className="space-y-6">
           {/* Permission Matrix */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Key className="h-5 w-5 text-purple-400" />
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+              <Key className="h-5 w-5 text-zinc-700" />
               Role-Based Access Control (RBAC) Entitlements
             </h3>
-            <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase font-mono border-b border-slate-800">
+            <div className="overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="w-full text-left text-xs text-zinc-700">
+                <thead className="bg-zinc-50 text-zinc-500 uppercase font-mono border-b border-zinc-200">
                   <tr>
                     <th className="py-3 px-4">Role</th>
                     <th className="py-3 px-4">Primary Purpose</th>
@@ -320,38 +320,38 @@ export default function SecurityGovernancePage() {
                     <th className="py-3 px-4">Iceberg Commit Ledger</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/60 bg-slate-900">
+                <tbody className="divide-y divide-zinc-100 bg-white">
                   <tr>
-                    <td className="py-3 px-4 font-bold text-white">ANALYST</td>
+                    <td className="py-3 px-4 font-bold text-zinc-900">ANALYST</td>
                     <td className="py-3 px-4">Business analysis & reporting</td>
-                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-semibold">Masked</span></td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Granted</td>
-                    <td className="py-3 px-4 text-slate-500">✕ Restricted</td>
-                    <td className="py-3 px-4 text-slate-500">✕ Restricted</td>
+                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold">Masked</span></td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted</td>
+                    <td className="py-3 px-4 text-zinc-400">✕ Restricted</td>
+                    <td className="py-3 px-4 text-zinc-400">✕ Restricted</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-bold text-white">AUDITOR</td>
+                    <td className="py-3 px-4 font-bold text-zinc-900">AUDITOR</td>
                     <td className="py-3 px-4">Regulatory & compliance audit</td>
-                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold">Full Access</span></td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Granted</td>
-                    <td className="py-3 px-4 text-slate-500">✕ Restricted</td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Granted (ACID Logs)</td>
+                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">Full Access</span></td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted</td>
+                    <td className="py-3 px-4 text-zinc-400">✕ Restricted</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted (ACID Logs)</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-bold text-white">DATA_ENGINEER</td>
+                    <td className="py-3 px-4 font-bold text-zinc-900">DATA_ENGINEER</td>
                     <td className="py-3 px-4">ETL, schema drift, storage jobs</td>
-                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-semibold">Masked</span></td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Granted</td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Full Control</td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Granted</td>
+                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold">Masked</span></td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted</td>
                   </tr>
                   <tr>
-                    <td className="py-3 px-4 font-bold text-white">ADMIN</td>
+                    <td className="py-3 px-4 font-bold text-zinc-900">ADMIN</td>
                     <td className="py-3 px-4">Workspace provisioning & security</td>
-                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold">Full Access</span></td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Full Control</td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Full Control</td>
-                    <td className="py-3 px-4 text-emerald-400">✓ Full Control</td>
+                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">Full Access</span></td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
                   </tr>
                 </tbody>
               </table>
@@ -359,17 +359,17 @@ export default function SecurityGovernancePage() {
           </div>
 
           {/* Dynamic Data Masking Example */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <EyeOff className="h-5 w-5 text-emerald-400" />
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+              <EyeOff className="h-5 w-5 text-emerald-600" />
               Dynamic PII Masking Preview (Analyst vs Compliance Officer)
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+              <div className="bg-zinc-50 p-4 rounded-xl border border-zinc-200 space-y-2">
+                <span className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider">
                   Auditor / Admin View (Raw Data)
                 </span>
-                <pre className="p-3 rounded bg-slate-900 text-xs font-mono text-slate-300 overflow-x-auto">
+                <pre className="p-3 rounded bg-zinc-900 text-xs font-mono text-zinc-200 overflow-x-auto border border-zinc-800">
 {`{
   "customer_id": 104,
   "first_name": "Emma",
@@ -380,11 +380,11 @@ export default function SecurityGovernancePage() {
                 </pre>
               </div>
 
-              <div className="bg-slate-950 p-4 rounded-xl border border-purple-500/30 space-y-2">
-                <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">
+              <div className="bg-zinc-50 p-4 rounded-xl border border-purple-200 space-y-2">
+                <span className="text-[10px] uppercase font-bold text-purple-700 tracking-wider">
                   Analyst View (Dynamically Masked in Memory)
                 </span>
-                <pre className="p-3 rounded bg-slate-900 text-xs font-mono text-purple-200 overflow-x-auto">
+                <pre className="p-3 rounded bg-zinc-900 text-xs font-mono text-purple-200 overflow-x-auto border border-zinc-800">
 {`{
   "customer_id": 104,
   "first_name": "E***",
@@ -401,14 +401,14 @@ export default function SecurityGovernancePage() {
 
       {/* TAB 3: Enterprise Query Audit Ledger */}
       {activeTab === "audit" && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+        <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FileText className="h-5 w-5 text-purple-400" />
+              <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                <FileText className="h-5 w-5 text-zinc-700" />
                 Immutable Analytical Audit Ledger
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-zinc-500">
                 Real-time compliance record of every query executed across all enterprise workspaces.
               </p>
             </div>
@@ -416,7 +416,7 @@ export default function SecurityGovernancePage() {
               <button
                 onClick={handleRefreshAudit}
                 disabled={refreshingAudit}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition border border-slate-700"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-semibold transition border border-zinc-200 shadow-2xs"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${refreshingAudit ? "animate-spin" : ""}`} />
                 Refresh
@@ -424,9 +424,9 @@ export default function SecurityGovernancePage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-800">
-            <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950 text-slate-400 uppercase font-mono border-b border-slate-800">
+          <div className="overflow-x-auto rounded-xl border border-zinc-200">
+            <table className="w-full text-left text-xs text-zinc-700">
+              <thead className="bg-zinc-50 text-zinc-500 uppercase font-mono border-b border-zinc-200">
                 <tr>
                   <th className="py-2.5 px-3">Timestamp (UTC)</th>
                   <th className="py-2.5 px-3">Tenant / Workspace</th>
@@ -439,45 +439,45 @@ export default function SecurityGovernancePage() {
                   <th className="py-2.5 px-3">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60 bg-slate-900">
+              <tbody className="divide-y divide-zinc-100 bg-white">
                 {auditLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-800/40 transition">
-                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                  <tr key={log.id} className="hover:bg-zinc-50/80 transition">
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-500">
                       {log.timestamp}
                     </td>
-                    <td className="py-2.5 px-3 font-bold text-white">
+                    <td className="py-2.5 px-3 font-bold text-zinc-900">
                       {tenants.find((t) => t.id === log.tenant_id)?.code || log.tenant_id}
                     </td>
                     <td className="py-2.5 px-3">
-                      <span className="font-medium text-slate-200 block">{log.user_name}</span>
-                      <span className="text-[10px] font-mono text-purple-400">{log.user_role}</span>
+                      <span className="font-medium text-zinc-900 block">{log.user_name}</span>
+                      <span className="text-[10px] font-mono text-purple-700">{log.user_role}</span>
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                    <td className="py-2.5 px-3 font-mono text-[11px] text-zinc-500">
                       {log.catalog}.{log.schema}
                     </td>
-                    <td className="py-2.5 px-4 font-mono text-xs text-purple-200 max-w-[320px] truncate" title={log.sql}>
+                    <td className="py-2.5 px-4 font-mono text-xs text-zinc-800 max-w-[320px] truncate" title={log.sql}>
                       {log.sql}
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-white">
+                    <td className="py-2.5 px-3 font-mono text-zinc-900 font-semibold">
                       {log.rows_returned}
                     </td>
-                    <td className="py-2.5 px-3 font-mono text-slate-400">
+                    <td className="py-2.5 px-3 font-mono text-zinc-500">
                       {log.execution_time_ms} ms
                     </td>
                     <td className="py-2.5 px-3">
                       {log.masking_applied ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                           Active
                         </span>
                       ) : (
-                        <span className="text-slate-500 text-[10px]">-</span>
+                        <span className="text-zinc-400 text-[10px]">-</span>
                       )}
                     </td>
                     <td className="py-2.5 px-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                         log.status === "SUCCESS"
-                          ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
-                          : "bg-rose-950 text-rose-300 border border-rose-800"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-rose-50 text-rose-700 border border-rose-200"
                       }`}>
                         {log.status}
                       </span>

@@ -91,6 +91,9 @@ export default function NewSourcePage() {
       setAuthMethod("Authentification standard (mot de passe)");
       setUsername("finlake_user");
       setPassword("FinLake2026!StrongPass#");
+      setEncrypt(false);
+      setTrustCert(true);
+      setTimeoutSec(30);
       payload = {
         connection_name: "retail-pos-pg",
         type: "postgresql",
@@ -113,6 +116,9 @@ export default function NewSourcePage() {
       setAuthMethod("Authentification SQL Server");
       setUsername("sa");
       setPassword("FinLake2026!StrongPass#");
+      setEncrypt(true);
+      setTrustCert(true);
+      setTimeoutSec(30);
       payload = {
         connection_name: "erp-production",
         type: "sqlserver",
@@ -734,7 +740,9 @@ export default function NewSourcePage() {
                 <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
                   <div>
                     <p className="font-medium text-zinc-900">✓ Sécuriser la connexion</p>
-                    <p className="text-[11px] text-zinc-400">Chiffrée (TLS)</p>
+                    <p className="text-[11px] text-zinc-400">
+                      {probeResult?.steps?.[1]?.detail || (encrypt ? (trustCert ? "Chiffrée (TLS · Certificat approuvé)" : "Chiffrée (TLS · Validation stricte)") : "Non chiffrée (Standard)")}
+                    </p>
                   </div>
                   <span className="text-zinc-700 font-medium">Réussi</span>
                 </div>
@@ -804,45 +812,77 @@ export default function NewSourcePage() {
                   <X className="h-3.5 w-3.5" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-bold text-zinc-900">Échec de la connexion à l’authentification</h3>
+                  <h3 className="text-xs font-bold text-zinc-900">
+                    {probeResult?.steps?.[1]?.status === "failed"
+                      ? "Échec de la validation TLS/SSL"
+                      : probeResult?.steps?.[0]?.status === "failed"
+                      ? "Échec de connexion au serveur"
+                      : "Échec de la connexion à l’authentification"}
+                  </h3>
                   <p className="text-[11px] text-zinc-500 mt-0.5">
-                    Le serveur a été joint, mais il a refusé le nom d’utilisateur ou le mot de passe.
+                    {probeResult?.summary || "Le serveur a été joint, mais il a refusé le nom d’utilisateur ou le mot de passe."}
                   </p>
                 </div>
               </div>
 
-              {/* 4 Steps With Failed Step */}
+              {/* 4 Steps With Dynamic Real Status */}
               <div className="space-y-2.5 pt-1">
+                {/* Step 1 */}
                 <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
                   <div>
-                    <p className="font-medium text-zinc-900">✓ Joindre le serveur</p>
+                    <p className={`font-medium ${probeResult?.steps?.[0]?.status === "failed" ? "text-rose-600" : "text-zinc-900"}`}>
+                      {probeResult?.steps?.[0]?.status === "failed" ? "✕" : "✓"} Joindre le serveur
+                    </p>
                     <p className="text-[11px] text-zinc-400 font-mono">{host}:{port}</p>
                   </div>
-                  <span className="text-zinc-700 font-medium">Réussi</span>
+                  <span className={`font-medium ${probeResult?.steps?.[0]?.status === "failed" ? "text-rose-600 font-semibold" : "text-zinc-700"}`}>
+                    {probeResult?.steps?.[0]?.status === "failed" ? "Échec" : "Réussi"}
+                  </span>
                 </div>
 
+                {/* Step 2 */}
                 <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
                   <div>
-                    <p className="font-medium text-zinc-900">✓ Sécuriser la connexion</p>
-                    <p className="text-[11px] text-zinc-400">Chiffrée (TLS)</p>
+                    <p className={`font-medium ${probeResult?.steps?.[1]?.status === "failed" ? "text-rose-600" : "text-zinc-900"}`}>
+                      {probeResult?.steps?.[1]?.status === "failed" ? "✕" : probeResult?.steps?.[1]?.status === "skipped" ? "—" : "✓"} Sécuriser la connexion
+                    </p>
+                    <p className="text-[11px] text-zinc-400 font-mono">
+                      {probeResult?.steps?.[1]?.detail || (encrypt ? "Chiffrée (TLS)" : "Non chiffrée")}
+                    </p>
                   </div>
-                  <span className="text-zinc-700 font-medium">Réussi</span>
+                  <span className={`font-medium ${probeResult?.steps?.[1]?.status === "failed" ? "text-rose-600 font-semibold" : probeResult?.steps?.[1]?.status === "skipped" ? "text-zinc-400" : "text-zinc-700"}`}>
+                    {probeResult?.steps?.[1]?.status === "failed" ? "Échec" : probeResult?.steps?.[1]?.status === "skipped" ? "Ignoré" : "Réussi"}
+                  </span>
                 </div>
 
+                {/* Step 3 */}
                 <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
                   <div>
-                    <p className="font-medium text-zinc-900">✕ S’authentifier</p>
-                    <p className="text-[11px] text-rose-600 font-mono">Identifiants refusés pour {username}</p>
+                    <p className={`font-medium ${probeResult?.steps?.[2]?.status === "failed" ? "text-rose-600" : "text-zinc-900"}`}>
+                      {probeResult?.steps?.[2]?.status === "failed" ? "✕" : probeResult?.steps?.[2]?.status === "skipped" ? "—" : "✓"} S’authentifier
+                    </p>
+                    <p className={`text-[11px] font-mono ${probeResult?.steps?.[2]?.status === "failed" ? "text-rose-600" : "text-zinc-400"}`}>
+                      {probeResult?.steps?.[2]?.detail || `En tant que ${username}`}
+                    </p>
                   </div>
-                  <span className="text-rose-600 font-semibold">Échec</span>
+                  <span className={`font-medium ${probeResult?.steps?.[2]?.status === "failed" ? "text-rose-600 font-semibold" : probeResult?.steps?.[2]?.status === "skipped" ? "text-zinc-400" : "text-zinc-700"}`}>
+                    {probeResult?.steps?.[2]?.status === "failed" ? "Échec" : probeResult?.steps?.[2]?.status === "skipped" ? "Ignoré" : "Réussi"}
+                  </span>
                 </div>
 
+                {/* Step 4 */}
                 <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
                   <div>
-                    <p className="font-medium text-zinc-400">— Ouvrir la base de données</p>
-                    <p className="text-[11px] text-zinc-400">Non exécutée, car l’authentification a échoué</p>
+                    <p className={`font-medium ${probeResult?.steps?.[3]?.status === "failed" ? "text-rose-600" : "text-zinc-400"}`}>
+                      {probeResult?.steps?.[3]?.status === "failed" ? "✕" : "—"} Ouvrir la base de données
+                    </p>
+                    <p className="text-[11px] text-zinc-400 font-mono">
+                      {probeResult?.steps?.[3]?.detail || "Non exécutée, car l’authentification a échoué"}
+                    </p>
                   </div>
-                  <span className="text-zinc-400">Ignoré</span>
+                  <span className={probeResult?.steps?.[3]?.status === "failed" ? "text-rose-600 font-semibold" : "text-zinc-400"}>
+                    {probeResult?.steps?.[3]?.status === "failed" ? "Échec" : "Ignoré"}
+                  </span>
                 </div>
               </div>
 
@@ -850,23 +890,31 @@ export default function NewSourcePage() {
               <div className="space-y-2 pt-1">
                 <p className="text-xs font-semibold text-zinc-900">À vérifier</p>
                 <ul className="text-xs text-zinc-600 space-y-1.5 pl-3 list-disc">
-                  <li>Le nom d’utilisateur et le mot de passe sont saisis correctement.</li>
-                  <li>Le compte est actif et n’est pas verrouillé sur le serveur.</li>
-                  <li>Le serveur autorise l’authentification {dbType === "PostgreSQL" ? "PostgreSQL" : "SQL Server"}, et pas seulement l’authentification Windows.</li>
+                  {probeResult?.troubleshooting_checklist && probeResult.troubleshooting_checklist.length > 0 ? (
+                    probeResult.troubleshooting_checklist.map((item, idx) => (
+                      <li key={idx}>{item}</li>
+                    ))
+                  ) : (
+                    <>
+                      <li>Le nom d’utilisateur et le mot de passe sont saisis correctement.</li>
+                      <li>Le compte est actif et n’est pas verrouillé sur le serveur.</li>
+                      <li>Le serveur autorise l’authentification {dbType === "PostgreSQL" ? "PostgreSQL" : "SQL Server"}, et pas seulement l’authentification Windows.</li>
+                    </>
+                  )}
                 </ul>
               </div>
 
               {/* Détails techniques Box (Wireframe Page 5) */}
               <div className="space-y-1.5 pt-1">
                 <p className="text-xs font-semibold text-zinc-900">Détails techniques</p>
-                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 font-mono text-[11px] text-zinc-700 leading-relaxed">
+                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 font-mono text-[11px] text-zinc-700 leading-relaxed overflow-x-auto">
                   <p>
-                    {dbType === "PostgreSQL"
+                    {probeResult?.technical_details || (dbType === "PostgreSQL"
                       ? "Erreur 28P01 · password authentication failed for user '" + username + "'."
-                      : "Erreur 18456 · Login failed for user '" + username + "'."}
+                      : "Erreur 18456 · Login failed for user '" + username + "'.")}
                   </p>
                   <p className="text-zinc-400 mt-1">
-                    Test à l’instant · échec après 1,2 s
+                    Test à l’instant · {probeResult?.response_time_ms ? `durée ${probeResult.response_time_ms} ms` : "échec après 1,2 s"}
                   </p>
                 </div>
               </div>

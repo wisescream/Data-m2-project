@@ -119,15 +119,22 @@ interface HistoryItem {
 
 export default function AnalyticsPage() {
   const [catalog, setCatalog] = useState("hive");
-  const [schema, setSchema] = useState("default");
-  const [sql, setSql] = useState(PRESET_QUERIES[1].sql);
+  const [schema, setSchema] = useState("finlake_curated");
+  const [sql, setSql] = useState(
+    "SELECT payment_method, COUNT(*) AS payment_count, ROUND(SUM(amount), 2) AS total_settled, ROUND(AVG(amount), 2) AS avg_payment FROM hive.finlake_curated.payment GROUP BY payment_method ORDER BY total_settled DESC"
+  );
   const [executing, setExecuting] = useState(false);
   const [result, setResult] = useState<any>(null);
 
-  // Visualization View Mode
+  // Visualization state
   const [viewMode, setViewMode] = useState<"table" | "bar" | "line" | "area" | "pie">("table");
   const [xAxisKey, setXAxisKey] = useState<string>("");
   const [yAxisKey, setYAxisKey] = useState<string>("");
+
+  // AI Copilot state
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiResult, setAiResult] = useState<any>(null);
 
   // Bookmarks & History
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
@@ -137,35 +144,22 @@ export default function AnalyticsPage() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // AI Copilot Natural Language Assistant
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiResult, setAiResult] = useState<{
-    sql: string;
-    explanation: string;
-    catalog: string;
-    schema: string;
-    suggested_chart: "table" | "bar" | "line" | "area" | "pie";
-    suggested_x?: string;
-    suggested_y?: string;
-  } | null>(null);
-
-  // Load bookmarks & history from localStorage
   useEffect(() => {
     try {
-      const savedBms = localStorage.getItem("finlake_saved_bookmarks");
-      if (savedBms) setBookmarks(JSON.parse(savedBms));
+      const savedBm = localStorage.getItem("finlake_query_bookmarks");
+      if (savedBm) setBookmarks(JSON.parse(savedBm));
+
       const savedHist = localStorage.getItem("finlake_query_history");
       if (savedHist) setHistory(JSON.parse(savedHist));
     } catch (e) {
-      console.warn("Could not read from localStorage", e);
+      console.warn("Could not load stored bookmarks or history", e);
     }
   }, []);
 
   const saveBookmarksToStorage = (updated: BookmarkItem[]) => {
     setBookmarks(updated);
     try {
-      localStorage.setItem("finlake_saved_bookmarks", JSON.stringify(updated));
+      localStorage.setItem("finlake_query_bookmarks", JSON.stringify(updated));
     } catch (e) {
       console.warn("Could not write bookmarks to localStorage", e);
     }
@@ -266,7 +260,6 @@ export default function AnalyticsPage() {
       const data = await runTrinoQuery(sql, catalog, schema, 1000, secContext);
       setResult(data);
 
-      // Add to history
       const newHistItem: HistoryItem = {
         id: "hist_" + Date.now(),
         sql: sql.trim(),
@@ -337,7 +330,6 @@ export default function AnalyticsPage() {
       setYAxisKey(target.suggested_y);
     }
 
-    // Trigger immediate execution
     setExecuting(true);
     setResult(null);
     const start = Date.now();
@@ -390,7 +382,6 @@ export default function AnalyticsPage() {
     setSql(bm.sql);
   };
 
-  // Export Results
   const handleExportCSV = () => {
     if (!result || !result.rows || result.rows.length === 0) return;
     const headers = result.columns.join(",");
@@ -428,7 +419,6 @@ export default function AnalyticsPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Chart Data Preparation (Limit to top 30 records for readable rendering)
   const chartData = useMemo(() => {
     if (!result || !result.rows) return [];
     return result.rows.slice(0, 30).map((r: any) => ({
@@ -440,60 +430,64 @@ export default function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
+      {/* ------------------------------------------------------------------- */}
+      {/* Page Header (Wireframe Card Style)                                  */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white border border-zinc-200 p-6 rounded-xl shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <BarChart3 className="h-6 w-6 text-purple-400" />
+          <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
+            <BarChart3 className="h-6 w-6 text-purple-600" />
             Trino Distributed Visual Data Explorer
           </h1>
-          <p className="text-slate-400 text-sm mt-1">
+          <p className="text-zinc-500 text-sm mt-1">
             Execute ANSI SQL, visualize multi-dimensional aggregates, bookmark insights, and export analytical batches.
           </p>
         </div>
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => setShowHistoryModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition border border-slate-700"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-medium transition border border-zinc-200 shadow-xs"
             title="View Query History"
           >
-            <History className="h-4 w-4 text-purple-400" />
+            <History className="h-4 w-4 text-purple-600" />
             <span className="hidden sm:inline">History</span> ({history.length})
           </button>
           <button
             onClick={() => setShowSaveModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition border border-slate-700"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-700 text-sm font-medium transition border border-zinc-200 shadow-xs"
             title="Bookmark Current Query"
           >
-            <Bookmark className="h-4 w-4 text-amber-400" />
+            <Bookmark className="h-4 w-4 text-amber-500" />
             <span className="hidden sm:inline">Bookmark</span>
           </button>
           <button
             onClick={handleRunQuery}
             disabled={executing}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-sm transition shadow-lg shadow-purple-600/25 active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-[#18181b] hover:bg-zinc-800 text-white font-semibold text-sm transition shadow-xs disabled:opacity-50"
           >
-            <Play className={`h-4 w-4 ${executing ? "animate-spin" : ""}`} />
+            <Play className={`h-4 w-4 text-purple-400 ${executing ? "animate-spin" : ""}`} />
             {executing ? "Executing..." : "Execute SQL"}
           </button>
         </div>
       </div>
 
-      {/* AI Copilot: Text-to-SQL Assistant */}
-      <div className="bg-gradient-to-r from-purple-950/40 via-slate-900 to-indigo-950/40 border border-purple-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+      {/* ------------------------------------------------------------------- */}
+      {/* AI Copilot: Text-to-SQL Assistant Card                              */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="bg-white border border-purple-200 rounded-xl p-6 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-purple-600/20 text-purple-400 border border-purple-500/30">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-purple-50 text-purple-600 border border-purple-200">
               <Sparkles className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+              <h2 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
                 FinLake AI Copilot
-                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                <span className="text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
                   Natural Language to SQL
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-zinc-500 mt-0.5">
                 Ask analytical questions in plain English — the copilot generates optimized ANSI SQL and visual chart configs.
               </p>
             </div>
@@ -508,12 +502,12 @@ export default function AnalyticsPage() {
             onChange={(e) => setAiPrompt(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAskAi()}
             placeholder="e.g. 'Show top 5 cities by invoiced revenue' or 'Analyze fraud vs non-fraud transaction volume'..."
-            className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-purple-500 shadow-inner"
+            className="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-purple-600 focus:bg-white transition"
           />
           <button
             onClick={() => handleAskAi()}
             disabled={aiGenerating || !aiPrompt.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-sm transition shadow-lg shadow-purple-600/30 active:scale-95 disabled:opacity-50 shrink-0"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold text-sm transition shadow-xs disabled:opacity-50 shrink-0"
           >
             <Sparkles className={`h-4 w-4 ${aiGenerating ? "animate-spin" : ""}`} />
             {aiGenerating ? "Translating..." : "Ask AI"}
@@ -522,7 +516,7 @@ export default function AnalyticsPage() {
 
         {/* Quick Suggestion Chips */}
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
-          <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mr-1">Suggestions:</span>
+          <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mr-1">Suggestions:</span>
           {[
             { label: "💳 Payments by Method", prompt: "Show payment volume and count by payment method" },
             { label: "🏙️ Top Cities by Revenue", prompt: "Find top 10 cities by total invoiced revenue" },
@@ -537,7 +531,7 @@ export default function AnalyticsPage() {
                 setAiPrompt(chip.prompt);
                 handleAskAi(chip.prompt);
               }}
-              className="text-xs px-2.5 py-1 rounded-lg bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/60 text-slate-300 hover:text-white transition shadow-sm"
+              className="text-xs px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition shadow-xs font-medium"
             >
               {chip.label}
             </button>
@@ -546,64 +540,64 @@ export default function AnalyticsPage() {
 
         {/* AI Result Card */}
         {aiResult && (
-          <div className="mt-3 p-4 rounded-xl bg-slate-950/90 border border-purple-500/40 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+          <div className="mt-3 p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-purple-200 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-2.5">
               <div className="flex items-center gap-2 text-xs">
-                <span className="px-2 py-0.5 rounded bg-purple-900/60 text-purple-300 border border-purple-700/50 font-mono">
+                <span className="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-mono">
                   Catalog: {aiResult.catalog}
                 </span>
-                <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/50 font-mono">
+                <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono">
                   Schema: {aiResult.schema}
                 </span>
                 {aiResult.suggested_chart && (
-                  <span className="px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700/50 font-semibold uppercase text-[10px]">
-                    Recommended Chart: {aiResult.suggested_chart}
+                  <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-semibold uppercase text-[10px]">
+                    Recommended: {aiResult.suggested_chart}
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleApplyAndRunAi()}
-                  disabled={executing}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-md shadow-emerald-600/30 active:scale-95 disabled:opacity-50"
-                >
-                  <Play className={`h-3.5 w-3.5 ${executing ? "animate-spin" : ""}`} />
-                  {executing ? "Executing..." : "Apply & Run Query"}
-                </button>
-              </div>
+              <button
+                onClick={() => handleApplyAndRunAi()}
+                disabled={executing}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-xs disabled:opacity-50"
+              >
+                <Play className={`h-3 w-3 ${executing ? "animate-spin" : ""}`} />
+                {executing ? "Executing..." : "Apply & Run Query"}
+              </button>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
+            <p className="text-xs text-zinc-300 leading-relaxed">
               <strong className="text-purple-300 font-medium">Copilot Logic: </strong>
               {aiResult.explanation}
             </p>
-            <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 font-mono text-xs text-purple-200 overflow-x-auto leading-relaxed">
+            <div className="p-3 rounded-lg bg-black border border-zinc-800 font-mono text-xs text-purple-300 overflow-x-auto leading-relaxed">
               {aiResult.sql}
             </div>
           </div>
         )}
       </div>
 
-      {/* Bookmarks Bar */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Bookmarks Bar                                                       */}
+      {/* ------------------------------------------------------------------- */}
       {bookmarks.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800/80 rounded-xl p-3 flex items-center gap-2 overflow-x-auto">
-          <span className="text-xs text-amber-400 font-semibold flex items-center gap-1 shrink-0 px-1">
+        <div className="bg-white border border-zinc-200 rounded-xl p-3 flex items-center gap-2 overflow-x-auto shadow-xs">
+          <span className="text-xs text-amber-600 font-semibold flex items-center gap-1 shrink-0 px-1">
             <BookmarkCheck className="h-3.5 w-3.5" /> Bookmarks:
           </span>
           {bookmarks.map((bm) => (
             <div
               key={bm.id}
-              className="group flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-purple-600/50 text-xs font-medium text-slate-300 shrink-0 transition"
+              className="group flex items-center gap-1.5 px-3 py-1 rounded-lg bg-zinc-50 border border-zinc-200 hover:border-purple-400 text-xs font-medium text-zinc-700 shrink-0 transition"
             >
               <button
                 onClick={() => handleLoadBookmark(bm)}
-                className="hover:text-purple-300 truncate max-w-[200px]"
+                className="hover:text-purple-600 truncate max-w-[200px]"
                 title={bm.title + " - " + bm.sql}
               >
                 {bm.title}
               </button>
               <button
                 onClick={() => handleDeleteBookmark(bm.id)}
-                className="opacity-0 group-hover:opacity-100 hover:text-rose-400 transition"
+                className="opacity-0 group-hover:opacity-100 hover:text-rose-600 transition"
                 title="Remove Bookmark"
               >
                 <Trash2 className="h-3 w-3" />
@@ -613,70 +607,76 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* Preset Queries */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Preset Queries                                                      */}
+      {/* ------------------------------------------------------------------- */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider mr-1">Presets:</span>
+        <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mr-1">Presets:</span>
         {PRESET_QUERIES.map((preset) => (
           <button
             key={preset.title}
             onClick={() => loadPreset(preset)}
-            className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-purple-500 text-xs font-medium text-slate-300 hover:text-white transition shadow-sm"
+            className="px-3 py-1.5 rounded-lg bg-white border border-zinc-200 hover:border-zinc-400 text-xs font-medium text-zinc-700 hover:text-zinc-900 transition shadow-xs"
           >
             {preset.title}
           </button>
         ))}
       </div>
 
-      {/* Enterprise Workspace & PII Security Banner */}
-      <div className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+      {/* ------------------------------------------------------------------- */}
+      {/* Enterprise Workspace & PII Security Banner                         */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="bg-white border border-zinc-200 rounded-xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-purple-400" />
-          <span className="text-slate-400">Enterprise Workspace:</span>
-          <strong className="text-white font-mono">{getSecurityContext().tenantId === "tenant_apex" ? "Apex Retail Bank EU" : "Acme Payments Global"}</strong>
-          <span className="text-slate-500">•</span>
-          <span className="text-slate-400">Active Persona:</span>
-          <strong className="text-purple-300">{getSecurityContext().userName} ({getSecurityContext().userRole})</strong>
+          <ShieldCheck className="h-4 w-4 text-purple-600" />
+          <span className="text-zinc-500">Enterprise Workspace:</span>
+          <strong className="text-zinc-900 font-mono">{getSecurityContext().tenantId === "tenant_apex" ? "Apex Retail Bank EU" : "Acme Payments Global"}</strong>
+          <span className="text-zinc-300">•</span>
+          <span className="text-zinc-500">Active Persona:</span>
+          <strong className="text-purple-700 font-semibold">{getSecurityContext().userName} ({getSecurityContext().userRole})</strong>
         </div>
         <div className="flex items-center gap-3">
           {getSecurityContext().userRole === "ANALYST" || getSecurityContext().userRole === "DATA_ENGINEER" ? (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2.5 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
               <EyeOff className="h-3 w-3" /> Dynamic PII Masking Active
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-950/60 border border-amber-800 px-2.5 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
               <Eye className="h-3 w-3" /> Unmasked Auditor Mode
             </span>
           )}
           <Link
             href="/security"
-            className="text-[11px] text-purple-400 hover:text-purple-300 font-semibold underline"
+            className="text-[11px] text-zinc-700 hover:text-zinc-900 font-semibold underline"
           >
             Switch Persona →
           </Link>
         </div>
       </div>
 
-      {/* Query Editor Box */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+      {/* ------------------------------------------------------------------- */}
+      {/* Query Editor Box                                                    */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-6 space-y-4 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 uppercase font-semibold">Catalog:</label>
+              <label className="text-xs text-zinc-500 uppercase font-semibold">Catalog:</label>
               <select
                 value={catalog}
                 onChange={(e) => setCatalog(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1 text-xs text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
               >
                 <option value="hive">hive (MinIO External)</option>
                 <option value="iceberg">iceberg (ACID Lakehouse)</option>
               </select>
             </div>
             <div className="flex items-center gap-2">
-              <label className="text-xs text-slate-400 uppercase font-semibold">Schema:</label>
+              <label className="text-xs text-zinc-500 uppercase font-semibold">Schema:</label>
               <select
                 value={schema}
                 onChange={(e) => setSchema(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-purple-500"
+                className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1 text-xs text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
               >
                 <option value="finlake_curated">finlake_curated</option>
                 <option value="default">default</option>
@@ -684,7 +684,7 @@ export default function AnalyticsPage() {
               </select>
             </div>
           </div>
-          <span className="text-xs text-slate-500 font-mono flex items-center gap-1">
+          <span className="text-xs text-zinc-400 font-mono flex items-center gap-1">
             <Code className="h-3.5 w-3.5" /> ANSI SQL Compatible
           </span>
         </div>
@@ -694,60 +694,62 @@ export default function AnalyticsPage() {
             value={sql}
             onChange={(e) => setSql(e.target.value)}
             rows={5}
-            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-sm text-purple-300 focus:outline-none focus:border-purple-500 resize-y shadow-inner leading-relaxed"
+            className="w-full bg-[#0b0f19] border border-zinc-800 rounded-xl p-4 font-mono text-sm text-purple-200 focus:outline-none focus:border-purple-500 resize-y shadow-inner leading-relaxed"
             placeholder="SELECT * FROM hive.finlake_curated.transactions LIMIT 10"
           />
         </div>
       </div>
 
-      {/* Query Results & Visual Explorer */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Query Results & Visual Explorer                                     */}
+      {/* ------------------------------------------------------------------- */}
       {result && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-2xl">
+        <div className="bg-white border border-zinc-200 rounded-xl p-6 space-y-6 shadow-xs">
           {/* Action Header */}
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-zinc-200 pb-4">
             <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                <FileSpreadsheet className="h-5 w-5 text-blue-400" />
+              <h2 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-purple-600" />
                 Exploration Workbench
               </h2>
               {/* Tab Selector */}
-              <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1">
+              <div className="flex items-center bg-zinc-100 border border-zinc-200 rounded-lg p-1">
                 <button
                   onClick={() => setViewMode("table")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    viewMode === "table" ? "bg-purple-600 text-white shadow-md shadow-purple-600/30" : "text-slate-400 hover:text-white"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    viewMode === "table" ? "bg-white text-zinc-900 shadow-xs font-semibold" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
                   <TableIcon className="h-3.5 w-3.5" /> Table
                 </button>
                 <button
                   onClick={() => setViewMode("bar")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    viewMode === "bar" ? "bg-purple-600 text-white shadow-md shadow-purple-600/30" : "text-slate-400 hover:text-white"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    viewMode === "bar" ? "bg-white text-zinc-900 shadow-xs font-semibold" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
                   <BarChart3 className="h-3.5 w-3.5" /> Bar
                 </button>
                 <button
                   onClick={() => setViewMode("line")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    viewMode === "line" ? "bg-purple-600 text-white shadow-md shadow-purple-600/30" : "text-slate-400 hover:text-white"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    viewMode === "line" ? "bg-white text-zinc-900 shadow-xs font-semibold" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
                   <LineChartIcon className="h-3.5 w-3.5" /> Line
                 </button>
                 <button
                   onClick={() => setViewMode("area")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    viewMode === "area" ? "bg-purple-600 text-white shadow-md shadow-purple-600/30" : "text-slate-400 hover:text-white"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    viewMode === "area" ? "bg-white text-zinc-900 shadow-xs font-semibold" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
                   <AreaChartIcon className="h-3.5 w-3.5" /> Area
                 </button>
                 <button
                   onClick={() => setViewMode("pie")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    viewMode === "pie" ? "bg-purple-600 text-white shadow-md shadow-purple-600/30" : "text-slate-400 hover:text-white"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition ${
+                    viewMode === "pie" ? "bg-white text-zinc-900 shadow-xs font-semibold" : "text-zinc-600 hover:text-zinc-900"
                   }`}
                 >
                   <PieChartIcon className="h-3.5 w-3.5" /> Donut
@@ -757,16 +759,16 @@ export default function AnalyticsPage() {
 
             {/* Metrics & Exports */}
             <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-3 text-xs text-slate-400 bg-slate-950 px-3 py-2 rounded-xl border border-slate-800">
+              <div className="flex items-center gap-3 text-xs text-zinc-600 bg-zinc-50 px-3 py-2 rounded-lg border border-zinc-200">
                 {result.execution_time_ms !== undefined && (
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-purple-400" />
-                    <strong className="text-white">{result.execution_time_ms} ms</strong>
+                    <Clock className="h-3.5 w-3.5 text-purple-600" />
+                    <strong className="text-zinc-900">{result.execution_time_ms} ms</strong>
                   </span>
                 )}
                 {result.row_count !== undefined && (
                   <span>
-                    Rows: <strong className="text-white">{result.row_count}</strong>
+                    Rows: <strong className="text-zinc-900">{result.row_count}</strong>
                   </span>
                 )}
               </div>
@@ -775,28 +777,28 @@ export default function AnalyticsPage() {
               <button
                 onClick={handleExportCSV}
                 disabled={!result.rows || result.rows.length === 0}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition border border-slate-700 disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-semibold transition border border-zinc-200 shadow-xs disabled:opacity-40"
                 title="Download CSV"
               >
-                <Download className="h-3.5 w-3.5 text-emerald-400" />
+                <Download className="h-3.5 w-3.5 text-emerald-600" />
                 CSV
               </button>
               <button
                 onClick={handleExportJSON}
                 disabled={!result.rows || result.rows.length === 0}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition border border-slate-700 disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-semibold transition border border-zinc-200 shadow-xs disabled:opacity-40"
                 title="Download JSON"
               >
-                <Download className="h-3.5 w-3.5 text-blue-400" />
+                <Download className="h-3.5 w-3.5 text-blue-600" />
                 JSON
               </button>
               <button
                 onClick={handleCopyClipboard}
                 disabled={!result.rows || result.rows.length === 0}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition border border-slate-700 disabled:opacity-40"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-semibold transition border border-zinc-200 shadow-xs disabled:opacity-40"
                 title="Copy Results JSON"
               >
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-400" />}
+                {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5 text-zinc-500" />}
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
@@ -804,8 +806,8 @@ export default function AnalyticsPage() {
 
           {/* Error Banner */}
           {result.error ? (
-            <div className="p-4 rounded-xl bg-rose-950/60 border border-rose-800 text-rose-200 text-sm font-mono">
-              <p className="font-semibold text-rose-400 mb-1 flex items-center gap-1.5">
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-mono">
+              <p className="font-semibold text-rose-700 mb-1 flex items-center gap-1.5">
                 <AlertCircle className="h-4 w-4" /> Query Execution Error
               </p>
               {result.error}
@@ -815,45 +817,46 @@ export default function AnalyticsPage() {
               {/* Executive KPI Summary Cards */}
               {kpiStats && (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Rows</p>
-                    <p className="text-xl font-bold text-white mt-0.5">{kpiStats.totalRows.toLocaleString()}</p>
+                  <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
+                    <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Total Rows</p>
+                    <p className="text-xl font-bold text-zinc-900 mt-0.5">{kpiStats.totalRows.toLocaleString()}</p>
                   </div>
                   {kpiStats.groupName && (
-                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider truncate">
                         Distinct ({kpiStats.groupName})
                       </p>
-                      <p className="text-xl font-bold text-blue-400 mt-0.5">{kpiStats.distinctGroups}</p>
+                      <p className="text-xl font-bold text-blue-600 mt-0.5">{kpiStats.distinctGroups}</p>
                     </div>
                   )}
                   {kpiStats.sumMetric !== null && (
-                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider truncate">
                         Sum ({kpiStats.metricName})
                       </p>
-                      <p className="text-xl font-bold text-emerald-400 mt-0.5">
+                      <p className="text-xl font-bold text-emerald-600 mt-0.5">
                         {kpiStats.sumMetric.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   )}
                   {kpiStats.avgMetric !== null && (
-                    <div className="bg-slate-950 border border-slate-800 rounded-xl p-3">
-                      <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider truncate">
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-3">
+                      <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider truncate">
                         Avg ({kpiStats.metricName})
                       </p>
-                      <p className="text-xl font-bold text-purple-400 mt-0.5">
+                      <p className="text-xl font-bold text-purple-600 mt-0.5">
                         {kpiStats.avgMetric.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                       </p>
                     </div>
                   )}
                 </div>
               )}
+
               {/* TABLE VIEW */}
               {viewMode === "table" && (
-                <div className="overflow-x-auto max-h-[480px] rounded-xl border border-slate-800">
-                  <table className="w-full text-left text-sm text-slate-300">
-                    <thead className="text-xs text-slate-400 uppercase bg-slate-950 sticky top-0 border-b border-slate-800">
+                <div className="overflow-x-auto max-h-[480px] rounded-xl border border-zinc-200">
+                  <table className="w-full text-left text-sm text-zinc-700">
+                    <thead className="text-xs text-zinc-500 uppercase bg-zinc-50 sticky top-0 border-b border-zinc-200">
                       <tr>
                         {result.columns.map((col: string) => (
                           <th key={col} className="py-3 px-4 font-mono font-semibold tracking-wide">
@@ -862,12 +865,12 @@ export default function AnalyticsPage() {
                         ))}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/60 bg-slate-900">
+                    <tbody className="divide-y divide-zinc-200 bg-white">
                       {result.rows.map((row: any, i: number) => (
-                        <tr key={i} className="hover:bg-slate-800/50 transition">
+                        <tr key={i} className="hover:bg-zinc-50 transition">
                           {result.columns.map((col: string) => (
                             <td key={col} className="py-2.5 px-4 font-mono text-xs">
-                              {row[col] !== null ? String(row[col]) : <span className="text-slate-600 italic">NULL</span>}
+                              {row[col] !== null ? String(row[col]) : <span className="text-zinc-400 italic">NULL</span>}
                             </td>
                           ))}
                         </tr>
@@ -881,13 +884,13 @@ export default function AnalyticsPage() {
               {viewMode !== "table" && (
                 <div className="space-y-4">
                   {/* Axis Selectors */}
-                  <div className="flex flex-wrap items-center gap-4 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
+                  <div className="flex flex-wrap items-center gap-4 bg-zinc-50 p-3 rounded-xl border border-zinc-200 text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-400 uppercase font-semibold">X-Axis (Category / Dimension):</span>
+                      <span className="text-zinc-500 uppercase font-semibold">X-Axis (Category / Dimension):</span>
                       <select
                         value={xAxisKey}
                         onChange={(e) => setXAxisKey(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                        className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1 text-zinc-900 font-mono focus:outline-none"
                       >
                         {result.columns.map((col: string) => (
                           <option key={col} value={col}>
@@ -898,11 +901,11 @@ export default function AnalyticsPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-400 uppercase font-semibold">Y-Axis (Metric / Value):</span>
+                      <span className="text-zinc-500 uppercase font-semibold">Y-Axis (Metric / Value):</span>
                       <select
                         value={yAxisKey}
                         onChange={(e) => setYAxisKey(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-white font-mono focus:outline-none"
+                        className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1 text-zinc-900 font-mono focus:outline-none"
                       >
                         {result.columns.map((col: string) => (
                           <option key={col} value={col}>
@@ -912,19 +915,19 @@ export default function AnalyticsPage() {
                       </select>
                     </div>
 
-                    <span className="text-slate-500 italic ml-auto">Showing up to top 30 records</span>
+                    <span className="text-zinc-400 italic ml-auto">Showing up to top 30 records</span>
                   </div>
 
                   {/* Chart Rendering Container */}
-                  <div className="h-96 w-full bg-slate-950/60 p-4 rounded-xl border border-slate-800/80">
+                  <div className="h-96 w-full bg-white p-4 rounded-xl border border-zinc-200 shadow-xs">
                     <ResponsiveContainer width="100%" height="100%">
                       {viewMode === "bar" ? (
                         <BarChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                          <XAxis dataKey={xAxisKey} stroke="#94a3b8" fontSize={11} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.6} />
+                          <XAxis dataKey={xAxisKey} stroke="#71717a" fontSize={11} tickLine={false} />
+                          <YAxis stroke="#71717a" fontSize={11} tickLine={false} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "0.75rem", color: "#fff" }}
+                            contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", borderRadius: "0.5rem", color: "#18181b", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
                             formatter={(value: any) => [Number(value).toLocaleString(), yAxisKey]}
                           />
                           <Bar dataKey={yAxisKey} fill="#8b5cf6" radius={[6, 6, 0, 0]}>
@@ -935,30 +938,30 @@ export default function AnalyticsPage() {
                         </BarChart>
                       ) : viewMode === "line" ? (
                         <LineChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                          <XAxis dataKey={xAxisKey} stroke="#94a3b8" fontSize={11} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.6} />
+                          <XAxis dataKey={xAxisKey} stroke="#71717a" fontSize={11} tickLine={false} />
+                          <YAxis stroke="#71717a" fontSize={11} tickLine={false} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "0.75rem", color: "#fff" }}
+                            contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", borderRadius: "0.5rem", color: "#18181b", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
                             formatter={(value: any) => [Number(value).toLocaleString(), yAxisKey]}
                           />
                           <Line type="monotone" dataKey={yAxisKey} stroke="#10b981" strokeWidth={3} dot={{ fill: "#10b981", r: 4 }} activeDot={{ r: 6 }} />
                         </LineChart>
                       ) : viewMode === "area" ? (
                         <AreaChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
-                          <XAxis dataKey={xAxisKey} stroke="#94a3b8" fontSize={11} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} />
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" opacity={0.6} />
+                          <XAxis dataKey={xAxisKey} stroke="#71717a" fontSize={11} tickLine={false} />
+                          <YAxis stroke="#71717a" fontSize={11} tickLine={false} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "0.75rem", color: "#fff" }}
+                            contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", borderRadius: "0.5rem", color: "#18181b", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
                             formatter={(value: any) => [Number(value).toLocaleString(), yAxisKey]}
                           />
-                          <Area type="monotone" dataKey={yAxisKey} stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.25} />
+                          <Area type="monotone" dataKey={yAxisKey} stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.2} />
                         </AreaChart>
                       ) : (
                         <PieChart>
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", borderRadius: "0.75rem", color: "#fff" }}
+                            contentStyle={{ backgroundColor: "#ffffff", borderColor: "#e4e4e7", borderRadius: "0.5rem", color: "#18181b", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }}
                             formatter={(value: any) => [Number(value).toLocaleString(), yAxisKey]}
                           />
                           <Legend />
@@ -984,45 +987,47 @@ export default function AnalyticsPage() {
               )}
             </div>
           ) : (
-            <div className="py-12 text-center text-slate-400 text-sm">
+            <div className="py-12 text-center text-zinc-400 text-sm">
               Query executed successfully but returned 0 rows.
             </div>
           )}
         </div>
       )}
 
-      {/* Bookmark Modal */}
+      {/* ------------------------------------------------------------------- */}
+      {/* Bookmark Modal                                                      */}
+      {/* ------------------------------------------------------------------- */}
       {showSaveModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <Bookmark className="h-5 w-5 text-amber-400" /> Bookmark Current Query
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-xl">
+            <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+              <Bookmark className="h-5 w-5 text-amber-500" /> Bookmark Current Query
             </h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-zinc-500">
               Save this SQL query and catalog configuration for instant access.
             </p>
             <div>
-              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">Bookmark Name</label>
+              <label className="block text-xs font-semibold text-zinc-500 uppercase mb-1">Bookmark Name</label>
               <input
                 type="text"
                 value={bookmarkTitle}
                 onChange={(e) => setBookmarkTitle(e.target.value)}
                 placeholder="e.g. Q4 Invoices by Method"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-3.5 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-medium"
                 autoFocus
               />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
+                className="px-4 py-2 rounded-lg text-xs font-semibold text-zinc-500 hover:text-zinc-800 transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSaveBookmark}
                 disabled={!bookmarkTitle.trim()}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition disabled:opacity-50"
+                className="px-5 py-2 rounded-lg bg-[#18181b] hover:bg-zinc-800 text-white text-xs font-semibold transition disabled:opacity-50"
               >
                 Save Bookmark
               </button>
@@ -1031,72 +1036,59 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      {/* History Modal */}
+      {/* ------------------------------------------------------------------- */}
+      {/* History Modal                                                       */}
+      {/* ------------------------------------------------------------------- */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <History className="h-5 w-5 text-purple-400" /> Recent Query History
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between border-b border-zinc-200 pb-3">
+              <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+                <History className="h-5 w-5 text-purple-600" /> Recent Query History
               </h3>
               <button
                 onClick={() => setShowHistoryModal(false)}
-                className="text-slate-400 hover:text-white text-sm"
+                className="text-zinc-400 hover:text-zinc-700 text-sm"
               >
                 ✕
               </button>
             </div>
             <div className="overflow-y-auto space-y-2.5 py-4 flex-1">
               {history.length === 0 ? (
-                <p className="text-center text-slate-500 text-sm py-8">No queries executed yet in this session.</p>
+                <p className="text-xs text-zinc-400 text-center py-8">No recent queries in history.</p>
               ) : (
-                history.map((item) => (
+                history.map((h) => (
                   <div
-                    key={item.id}
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 hover:border-slate-700 transition flex items-center justify-between gap-4"
+                    key={h.id}
+                    className="p-3 rounded-lg bg-zinc-50 border border-zinc-200 text-xs space-y-1.5 hover:border-zinc-400 transition"
                   >
-                    <div className="space-y-1 overflow-hidden">
-                      <p className="font-mono text-xs text-purple-300 truncate">{item.sql}</p>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-400">
-                        <span>{item.catalog}.{item.schema}</span>
-                        <span>•</span>
-                        <span>{item.executedAt}</span>
-                        <span>•</span>
-                        <span>{item.durationMs}ms</span>
-                        <span>•</span>
-                        <span className={item.isError ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>
-                          {item.isError ? "ERROR" : `${item.rowCount} rows`}
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[11px] text-zinc-500">
+                        {h.catalog}.{h.schema} · {h.executedAt}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        h.isError ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {h.isError ? "ERROR" : `${h.rowCount} rows · ${h.durationMs} ms`}
+                      </span>
                     </div>
-                    <button
-                      onClick={() => {
-                        setCatalog(item.catalog);
-                        setSchema(item.schema);
-                        setSql(item.sql);
-                        setShowHistoryModal(false);
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition shrink-0"
-                    >
-                      Load
-                    </button>
+                    <p className="font-mono text-zinc-800 truncate">{h.sql}</p>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setCatalog(h.catalog);
+                          setSchema(h.schema);
+                          setSql(h.sql);
+                          setShowHistoryModal(false);
+                        }}
+                        className="text-zinc-900 font-semibold underline text-[11px]"
+                      >
+                        Load to Editor
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
-            </div>
-            <div className="flex justify-between items-center border-t border-slate-800 pt-3">
-              <button
-                onClick={() => saveHistoryToStorage([])}
-                className="text-xs text-rose-400 hover:text-rose-300 transition"
-              >
-                Clear History
-              </button>
-              <button
-                onClick={() => setShowHistoryModal(false)}
-                className="px-4 py-1.5 rounded-xl bg-slate-800 text-xs text-slate-300 hover:text-white"
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>

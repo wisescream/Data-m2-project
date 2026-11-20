@@ -241,26 +241,30 @@ public class SourceExplorerService {
             );
         }
 
-        // Step 2: TLS negotiation
-        steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", encrypt ? "Chiffrée (TLS)" : "Standard", "success"));
+        // Step 2, 3 & 4: TLS negotiation, Authenticate and Open database
+        String step2Detail = encrypt
+                ? (trustCert ? "Chiffrée (TLS · Certificat approuvé)" : "Chiffrée (TLS · Validation stricte)")
+                : "Non chiffrée (Standard)";
 
-        // Step 3 & 4: Authenticate and Open database
         String jdbcUrl;
         if (isPostgres) {
             String sslParam = encrypt ? "sslmode=prefer" : "sslmode=disable";
-            jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?%s&loginTimeout=%d",
-                    host, port, database, sslParam, timeoutSeconds);
+            jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?%s&loginTimeout=%d&connectTimeout=%d",
+                    host, port, database, sslParam, timeoutSeconds, timeoutSeconds);
         } else {
             jdbcUrl = String.format(
-                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=%b;trustServerCertificate=%b;loginTimeout=%d",
-                    host, port, database, encrypt, trustCert, timeoutSeconds
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=%b;trustServerCertificate=%b;loginTimeout=%d;socketTimeout=%d",
+                    host, port, database, encrypt, trustCert, timeoutSeconds, timeoutSeconds * 1000
             );
         }
 
         try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass);
              Statement stmt = conn.createStatement()) {
 
-            // Authentication succeeded
+            // Step 2 validated
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", step2Detail, "success"));
+
+            // Step 3: Authentication succeeded
             steps.add(new SourceProbeStepDTO(3, "S'authentifier", "En tant que " + user, "success"));
 
             // Open database & fetch version
@@ -312,6 +316,16 @@ public class SourceExplorerService {
         } catch (Exception ex) {
             long duration = System.currentTimeMillis() - start;
             String msg = ex.getMessage();
+
+            boolean isSslFailure = msg != null && (
+                    msg.contains("PKIX") ||
+                    msg.contains("SSL") ||
+                    msg.contains("certificate") ||
+                    msg.contains("handshake") ||
+                    msg.contains("CertPath") ||
+                    msg.contains("valid certification path")
+            );
+
             boolean isAuthFailure = msg != null && (
                     msg.contains("Login failed") ||
                     msg.contains("18456") ||
@@ -320,7 +334,27 @@ public class SourceExplorerService {
                     msg.contains("authentification")
             );
 
-            if (isAuthFailure) {
+            if (isSslFailure) {
+                steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", "Échec TLS (certificat non approuvé)", "failed"));
+                steps.add(new SourceProbeStepDTO(3, "S'authentifier", "Non exécutée, car la négociation TLS a échoué", "skipped"));
+                steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", "Ignoré", "skipped"));
+
+                return new SourceProbeResponseDTO(
+                        "failed",
+                        "Échec de la validation TLS/SSL. Le certificat du serveur distant n'a pas pu être validé.",
+                        null,
+                        duration,
+                        LocalDateTime.now(),
+                        steps,
+                        "Erreur SSL/TLS : " + msg,
+                        List.of(
+                                "Activer l'option 'Faire confiance au certificat du serveur' si votre base utilise un certificat auto-signé.",
+                                "Vérifier que le certificat SSL du serveur est valide et n'a pas expiré.",
+                                "Désactiver l'option 'Chiffrer la connexion' si le serveur distant ne requiert pas TLS."
+                        )
+                );
+            } else if (isAuthFailure) {
+                steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", step2Detail, "success"));
                 steps.add(new SourceProbeStepDTO(3, "S'authentifier", "Identifiants refusés pour " + user, "failed"));
                 steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", "Non exécutée, car l'authentification a échoué", "skipped"));
 
@@ -350,6 +384,7 @@ public class SourceExplorerService {
                         checklist
                 );
             } else {
+                steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", step2Detail, "success"));
                 steps.add(new SourceProbeStepDTO(3, "S'authentifier", "En tant que " + user, "success"));
                 steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", "Impossible d'accéder à " + database, "failed"));
 
