@@ -20,7 +20,7 @@ Les mesures ont été exécutées dans des conditions strictes et homogènes sur
 | **Processeur hôte** | Intel Core 12th/13th Gen (20 vCPUs physiques/logiques) |
 | **Moteur de conteneurs** | Docker version 29.9.3, build 5457199 |
 | **Réseau virtuel** | Docker Bridge `finlake-network` (MTU 1500) |
-| **Image Worker Ingestion** | `finlake-worker:1.0` (Debian Bookworm, Python 3.11.9, PyArrow 17.0.0) |
+| **Moteur d'Ingestion** | `FinLake Native Java Ingestion Engine` (Eclipse Temurin JRE 21, Spring Boot 3.3.5) |
 | **Moteur SQL Distribué** | Trino version 452 (Java 22.0.2 OpenJDK 64-bit) |
 | **Catalogue de métadonnées** | Apache Hive Metastore 4.0.0 (PostgreSQL 16.4) |
 | **Stockage d'objets S3** | MinIO RELEASE.2025-10-15T17-29-55Z |

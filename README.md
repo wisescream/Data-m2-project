@@ -235,7 +235,7 @@ Le module **Data Sources** a été fidèlement implémenté selon les spécifica
 | **Q4 (Partition Pruned)** | Filtre temporel sur `event_date = '2023-01-01'` | **733 ms (Min: 703 ms)** |
 | **Gain Élagage** | Trino n'interroge que la partition ciblée | **-92.8% de latence** |
 
-*Rapport d'analyse complet : [`docs/benchmark_report.md`](file:///c:/Users/USER/Desktop/projet-data/docs/benchmark_report.md).*
+*Rapport d'analyse complet : [`docs/benchmark_report.md`](docs/benchmark_report.md).*
 
 ---
 
@@ -270,7 +270,7 @@ Le dataset principal (`hive.finlake_curated` et `iceberg.finlake_iceberg`) est r
 * **`david.auditor`** (Mot de passe: `FinLake2026!`): Compliance & AML Auditor. Inspection médico-légale sans masquage avec journalisation immuable dans la piste d'audit.
 * **`admin`** (Mot de passe: `FinLake2026!`): Administrateur plateforme. Gestion complète des politiques de sécurité et des sources.
 
-*Documentation détaillée des utilisateurs : [`docs/DEFAULT_DATASET_USER.md`](file:///c:/Users/USER/Desktop/projet-data/docs/DEFAULT_DATASET_USER.md).*
+*Documentation détaillée des utilisateurs : [`docs/DEFAULT_DATASET_USER.md`](docs/DEFAULT_DATASET_USER.md).*
 
 ### 8.2 Montage de Données pour Entreprises Externes
 
@@ -280,7 +280,7 @@ Toute entreprise externe (banque, retailer, assurance) peut monter ses propres b
 3. Ingestion automatique vers le préfixe S3 dédié du tenant (`s3a://finlake/tenants/{tenant_id}/`).
 4. Enregistrement automatique du catalogue Trino dédié (`{tenant_id}.curated`).
 
-*Guide complet de montage : [`docs/MULTI_TENANT_DATA_MOUNTING.md`](file:///c:/Users/USER/Desktop/projet-data/docs/MULTI_TENANT_DATA_MOUNTING.md).*
+*Guide complet de montage : [`docs/MULTI_TENANT_DATA_MOUNTING.md`](docs/MULTI_TENANT_DATA_MOUNTING.md).*
 
 ---
 

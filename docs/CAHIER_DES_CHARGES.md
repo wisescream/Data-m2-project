@@ -27,7 +27,7 @@ Comment extraire de manière fiable plusieurs millions de transactions d'une sou
 - Exécution locale avec Docker Compose.
 - Dataset PaySim, version CSV publique d'environ 6,36 millions de lignes.
 - SQL Server comme base relationnelle source.
-- API Python/FastAPI et worker d'ingestion.
+- Control Plane Spring Boot 3.3.5 (Java 21) et moteur d'ingestion natif Java.
 - MinIO, Hive Metastore et Trino.
 - CSV et Parquet; compression none/Snappy/Zstandard selon compatibilité.
 - Partitionnement temporel dérivé de `step`.
@@ -58,13 +58,13 @@ Note de prudence : dans le scénario PaySim, les transactions frauduleuses sont 
 - Responsable projet : consulte les résultats de benchmark et le rapport de validation.
 
 ## 4. Architecture cible
-`PaySim CSV -> SQL Server -> FastAPI (control plane) -> ingestion worker -> CSV/Parquet -> MinIO -> Hive Metastore -> Trino -> SQL`
+`PaySim CSV -> SQL Server / PostgreSQL -> Spring Boot 3.3.5 (Control Plane) -> Native Java Ingestion Engine -> CSV/Parquet -> MinIO -> Hive Metastore -> Trino -> SQL`
 
 ### 4.1 Composants
-- SQL Server : source relationnelle de démonstration.
-- FastAPI : découverte, validation des demandes, gestion des jobs.
-- Worker Python : extraction par lots, transformation minimale et écriture.
-- PyArrow : schéma et sérialisation Parquet.
+- SQL Server & PostgreSQL : sources relationnelles de démonstration.
+- Spring Boot 3.3.5 (Java 21) : découverte, validation des demandes, gestion des jobs, sécurité multi-tenant.
+- Native Java Ingestion Engine : extraction par lots (keyset pagination bounded-memory), transformation minimale et écriture Parquet.
+- Apache Parquet Java / Hadoop : schéma et sérialisation Parquet optimisée (Snappy, Zstandard).
 - MinIO : stockage objet compatible S3.
 - Hive Metastore : catalogue de métadonnées.
 - Trino : moteur de requêtes SQL.

@@ -170,4 +170,4 @@
 
 ---
 
-*Report generated automatically by `scripts/profile_dataset.py` — FinLake Phase P0*
+*Rapport de validation de qualité du jeu de données PaySim — FinLake Phase P0*

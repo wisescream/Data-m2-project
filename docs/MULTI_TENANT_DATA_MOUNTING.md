@@ -78,16 +78,19 @@ If the enterprise has an operational SQL Server, PostgreSQL, MySQL, or Oracle da
    curl -X POST http://localhost:8000/sources \
      -H "Content-Type: application/json" \
      -d '{
-       "id": "apex_core_banking",
-       "name": "Apex Retail Core Banking (EU)",
+       "connection_name": "apex-core-banking",
        "type": "sqlserver",
        "host": "apex-db.internal",
        "port": 1433,
        "database": "ApexCore",
+       "auth_method": "sqlserver",
        "username": "finlake_reader",
-       "password": "SecretPassword123!"
+       "password": "SecretPassword123!",
+       "encrypt": true,
+       "trust_server_certificate": true
      }'
    ```
+   *(Ou pour PostgreSQL : `"type": "postgresql"`, `"port": 5432`, `"database": "apex_banking"`).*
 2. Trigger bounded-memory batch ingestion to MinIO:
    ```bash
    curl -X POST http://localhost:8000/storage/jobs \

@@ -4,7 +4,7 @@
 
 La Phase P7 introduit deux extensions majeures à l'architecture FinLake :
 1. **L'adoption d'un Table Format Moderne (Apache Iceberg)** : Passage d'un modèle de table externe Hive classique à un format de table ouvert avec garanties ACID, snapshots immuables et requêtes de voyage dans le temps (*Time-Travel*).
-2. **Le Centre d'Observabilité & Dashboards Visuels** : Interface utilisateur interactive et moderne (FastAPI Web Dashboard et Visualisation locale) permettant de piloter l'infrastructure, d'explorer les métriques de benchmarks, les analyses de fraudes PaySim et le ledger Iceberg.
+2. **Le Centre d'Observabilité & Dashboards Visuels** : Interface utilisateur interactive et moderne (Next.js 15 Web Dashboard et Control Plane Spring Boot 3) permettant de piloter l'infrastructure, d'explorer les métriques de benchmarks, les analyses de fraudes PaySim et le ledger Iceberg.
 
 ---
 
@@ -115,20 +115,21 @@ WHERE is_flagged_fraud = 1;
 
 ## 5. Dashboards Visuels & Observabilité
 
-FinLake intègre un tableau de bord complet accessible sous deux formes :
-1. **Application Web interactive intégrée à l'API** :
-   - Démarrer l'API : `python -m uvicorn src.finlake.api.app:app --host 127.0.0.1 --port 8000`
-   - Accéder à l'URL : `http://127.0.0.1:8000/dashboard`
-2. **Page locale autonome (*Standalone*)** :
-   - Ouvrir simplement le fichier `dashboard/index.html` dans n'importe quel navigateur moderne.
+FinLake intègre un tableau de bord moderne et interactif développé en Next.js 15 et propulsé par le backend Spring Boot 3.3.5 :
+1. **Module Iceberg Ledger (`/iceberg`)** :
+   - Accessible sur : `http://localhost:3000/iceberg`
+   - Affiche en direct le tableau complet des snapshots immuables, l'opération (`append`, `overwrite`), le commit timestamp et la taille des fichiers.
+   - Permet d'explorer interactivement le voyage dans le temps (*Time-Travel*).
+2. **Endpoint REST du Control Plane** :
+   - `GET http://localhost:8000/api/dashboard/iceberg`
+   - Retourne la structure JSON complète des snapshots et métadonnées d'historique de la table.
 
 ### Fonctionnalités du Dashboard :
-- **Barre de santé des microservices** : Vérification en temps réel de SQL Server, MinIO, Trino et Iceberg.
-- **Cartes KPI Exécutives** : Lignes indexées (16M+), économie de compression (-68.5%), vitesse d'élagage (-92.8%), snapshots Iceberg.
-- **Visualisations de Benchmark (Chart.js)** :
+- **Barre de santé des services** : Diagnostic en temps réel de SQL Server, PostgreSQL, MinIO, Hive Metastore et Trino.
+- **Cartes KPI Exécutives** : Lignes indexées (6.36M+ PaySim), économie de compression (-68.5% en Parquet Zstandard), accélération par élagage (-92.8% de latence sur requêtes partitionnées), et snapshots Iceberg actifs.
+- **Visualisations Analytiques (Recharts)** :
   - Ratios comparatifs de compression (CSV vs Parquet Zstd/Snappy/None).
   - Élagage de partition Trino (Q1 vs Q4).
-  - Débit d'ingestion selon la taille de lot.
-- **Analyse Métier PaySim** : Répartition des types de transaction et confinement à 100% des fraudes dans `TRANSFER` et `CASH_OUT`.
-- **Ledger Iceberg interactif** : Suivi des snapshots et démonstration du time-travel.
-- **Console de dispatching de jobs** : Formulaire permettant de déclencher des extractions asynchrones (`202 Accepted`) avec suivi en direct.
+  - Répartition des flux de capitaux par type de transaction (`CASH_IN`, `CASH_OUT`, `PAYMENT`, `TRANSFER`, `DEBIT`).
+- **Analyse Fraude PaySim** : Confinement à 100% des fraudes dans `TRANSFER` et `CASH_OUT`.
+- **Ledger Iceberg interactif** : Suivi des snapshots et inspection historique.

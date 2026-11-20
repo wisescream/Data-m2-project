@@ -28,7 +28,7 @@ stateDiagram-v2
 
 ## 2. Endpoints du Module Data Sources (Wireframe-Compliant)
 
-### 2.1 Liste des Sources Configruées (`GET /sources`)
+### 2.1 Liste des Sources Configurées (`GET /sources`)
 Retourne l'ensemble des sources relationnelles avec leur statut opérationnel et les métadonnées de version.
 
 ```bash
