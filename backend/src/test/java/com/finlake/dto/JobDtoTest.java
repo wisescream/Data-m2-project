@@ -14,7 +14,7 @@ class JobDtoTest {
         JobCreateRequestDTO req = new JobCreateRequestDTO(null, null, null, null, null, null, null, null);
         assertEquals("sqlserver-paysim", req.sourceId());
         assertEquals("dbo", req.schemaName());
-        assertEquals("raw_transactions", req.table());
+        assertEquals("transactions", req.table());
         assertEquals("parquet", req.format());
         assertEquals("snappy", req.compression());
         assertEquals(50000, req.batchSize());
