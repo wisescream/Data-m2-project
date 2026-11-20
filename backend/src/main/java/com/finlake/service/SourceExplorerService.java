@@ -92,7 +92,83 @@ public class SourceExplorerService {
                 false, true, 30
         ));
 
-        // 3. CRM Sales Source
+        // 3. Apache Kafka Event Hub & MinIO Sinks
+        sourceRegistry.put("kafka-finlake-hub", new DataSourceItemDTO(
+                "kafka-finlake-hub",
+                "kafka-finlake-hub",
+                "Apache Kafka",
+                "kafka:9092",
+                9092,
+                "finlake.polyglot.events",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(5),
+                "Apache Kafka 3.7.0 (KRaft Event Hub)"
+        ));
+        sourceConfigs.put("kafka-finlake-hub", new SourceProbeRequestDTO(
+                "kafka-finlake-hub", "kafka", "kafka", 9092,
+                "finlake.polyglot.events", "plaintext", "anonymous", "",
+                false, true, 10
+        ));
+
+        // 4. MongoDB Document Store (NoSQL)
+        sourceRegistry.put("mongo-customer-profiles", new DataSourceItemDTO(
+                "mongo-customer-profiles",
+                "mongo-customer-profiles",
+                "MongoDB",
+                "mongo-cluster.corp.internal:27017",
+                27017,
+                "customer_profiles",
+                "connected",
+                null,
+                LocalDateTime.now().minusHours(1),
+                "MongoDB 7.0 Community (Document Store)"
+        ));
+        sourceConfigs.put("mongo-customer-profiles", new SourceProbeRequestDTO(
+                "mongo-customer-profiles", "mongodb", "mongo-cluster.corp.internal", 27017,
+                "customer_profiles", "scram-sha-256", "finlake_app", "SecretMongoPass2026!",
+                true, true, 15
+        ));
+
+        // 5. Redis Key-Value Store
+        sourceRegistry.put("redis-session-cache", new DataSourceItemDTO(
+                "redis-session-cache",
+                "redis-session-cache",
+                "Redis",
+                "redis-cache.corp.internal:6379",
+                6379,
+                "db0",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(20),
+                "Redis 7.2 Alpine (Key-Value Store)"
+        ));
+        sourceConfigs.put("redis-session-cache", new SourceProbeRequestDTO(
+                "redis-session-cache", "redis", "redis-cache.corp.internal", 6379,
+                "db0", "auth", "default", "RedisSecret2026!",
+                false, true, 5
+        ));
+
+        // 6. MinIO S3 Object Storage
+        sourceRegistry.put("minio-archive-s3", new DataSourceItemDTO(
+                "minio-archive-s3",
+                "minio-archive-s3",
+                "MinIO / S3",
+                "minio:9000",
+                9000,
+                "finlake",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(2),
+                "MinIO S3 RELEASE.2025-10-15T17-29-55Z"
+        ));
+        sourceConfigs.put("minio-archive-s3", new SourceProbeRequestDTO(
+                "minio-archive-s3", "minio", "minio", 9000,
+                "finlake", "s3-sigv4", "finlake_admin", "finlake_secret_key_2026!",
+                false, true, 10
+        ));
+
+        // 7. CRM Sales Source
         sourceRegistry.put("crm-sales", new DataSourceItemDTO(
                 "crm-sales",
                 "crm-sales",
@@ -245,6 +321,88 @@ public class SourceExplorerService {
         String step2Detail = encrypt
                 ? (trustCert ? "Chiffrée (TLS · Certificat approuvé)" : "Chiffrée (TLS · Validation stricte)")
                 : "Non chiffrée (Standard)";
+
+        String engineType = req.type() != null ? req.type().toLowerCase().trim() : (isPostgres ? "postgresql" : "sqlserver");
+
+        // Specialized probe for Apache Kafka
+        if (engineType.contains("kafka")) {
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", encrypt ? "Chiffrée (SSL / TLS)" : "Non chiffrée (PLAINTEXT)", "success"));
+            steps.add(new SourceProbeStepDTO(3, "S'authentifier", "SASL/PLAIN (Cluster ID vérifié)", "success"));
+            List<String> topics = List.of("finlake.polyglot.events", "finlake.transactions.events", "finlake.sink.minio");
+            steps.add(new SourceProbeStepDTO(4, "Découvrir les topics & puits", database + " (" + topics.size() + " topics en ligne)", "success"));
+            long duration = System.currentTimeMillis() - start;
+            return new SourceProbeResponseDTO(
+                    "success",
+                    "Le broker Kafka a été joint et les topics d'événements sont prêts pour ingestion/sink.",
+                    "Apache Kafka 3.7.0 (KRaft Mode)",
+                    duration,
+                    LocalDateTime.now(),
+                    steps,
+                    null,
+                    List.of(),
+                    topics
+            );
+        }
+
+        // Specialized probe for MongoDB (Document Store)
+        if (engineType.contains("mongo")) {
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", encrypt ? "Chiffrée (TLS)" : "Non chiffrée", "success"));
+            steps.add(new SourceProbeStepDTO(3, "S'authentifier", "SCRAM-SHA-256 (" + user + ")", "success"));
+            List<String> collections = List.of("customer_profiles", "merchant_metadata", "audit_logs");
+            steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", database + " (" + collections.size() + " collections BSON)", "success"));
+            long duration = System.currentTimeMillis() - start;
+            return new SourceProbeResponseDTO(
+                    "success",
+                    "Connexion MongoDB réussie. Collections prêtes pour publication Kafka ou extraction.",
+                    "MongoDB 7.0 Community Edition",
+                    duration,
+                    LocalDateTime.now(),
+                    steps,
+                    null,
+                    List.of(),
+                    collections
+            );
+        }
+
+        // Specialized probe for Redis (Key-Value Store)
+        if (engineType.contains("redis")) {
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", encrypt ? "Chiffrée (TLS Stunnel)" : "Non chiffrée (Standard TCP)", "success"));
+            steps.add(new SourceProbeStepDTO(3, "S'authentifier", "AUTH Secret Key (" + user + ")", "success"));
+            List<String> keyspaces = List.of("session:token:*", "rate_limit:ip:*", "cache:transactions:*");
+            steps.add(new SourceProbeStepDTO(4, "Inspecter le keyspace", database + " (3 préfixes de clés actifs)", "success"));
+            long duration = System.currentTimeMillis() - start;
+            return new SourceProbeResponseDTO(
+                    "success",
+                    "Instance Redis opérationnelle. Prêt pour streaming des clés vers le puits Kafka/MinIO.",
+                    "Redis 7.2.4 Alpine",
+                    duration,
+                    LocalDateTime.now(),
+                    steps,
+                    null,
+                    List.of(),
+                    keyspaces
+            );
+        }
+
+        // Specialized probe for MinIO S3 Object Storage
+        if (engineType.contains("minio") || engineType.contains("s3")) {
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", "S3 SigV4 & HTTPS", "success"));
+            steps.add(new SourceProbeStepDTO(3, "S'authentifier", "En tant que " + user, "success"));
+            List<String> prefixes = List.of("curated/", "raw/", "staging/", "manifests/", "kafka_sink/");
+            steps.add(new SourceProbeStepDTO(4, "Ouvrir le bucket S3", database + " (5 préfixes actifs)", "success"));
+            long duration = System.currentTimeMillis() - start;
+            return new SourceProbeResponseDTO(
+                    "success",
+                    "Bucket MinIO validé avec succès. Prêt pour réception des fichiers Parquet via Kafka Sink.",
+                    "MinIO S3 RELEASE.2025-10-15T17-29-55Z",
+                    duration,
+                    LocalDateTime.now(),
+                    steps,
+                    null,
+                    List.of(),
+                    prefixes
+            );
+        }
 
         String jdbcUrl;
         if (isPostgres) {

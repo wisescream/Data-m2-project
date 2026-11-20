@@ -69,6 +69,38 @@ export default function NewSourcePage() {
       setAuthMethod("Authentification standard (mot de passe)");
       setUsername("finlake_user");
       setPassword("FinLake2026!StrongPass#");
+    } else if (newType === "Apache Kafka") {
+      setConnectionName("kafka-finlake-hub");
+      setHost("kafka");
+      setPort(9092);
+      setDatabase("finlake.polyglot.events");
+      setAuthMethod("PLAINTEXT / KRaft");
+      setUsername("anonymous");
+      setPassword("");
+    } else if (newType === "MongoDB") {
+      setConnectionName("mongo-customer-profiles");
+      setHost("mongo-cluster.corp.internal");
+      setPort(27017);
+      setDatabase("customer_profiles");
+      setAuthMethod("SCRAM-SHA-256");
+      setUsername("finlake_app");
+      setPassword("SecretMongoPass2026!");
+    } else if (newType === "Redis") {
+      setConnectionName("redis-session-cache");
+      setHost("redis-cache.corp.internal");
+      setPort(6379);
+      setDatabase("db0");
+      setAuthMethod("AUTH Token");
+      setUsername("default");
+      setPassword("RedisSecret2026!");
+    } else if (newType === "MinIO / S3") {
+      setConnectionName("minio-archive-s3");
+      setHost("minio");
+      setPort(9000);
+      setDatabase("finlake");
+      setAuthMethod("S3 SigV4");
+      setUsername("finlake_admin");
+      setPassword("finlake_secret_key_2026!");
     } else {
       setConnectionName("erp-production");
       setHost("sqlserver");
@@ -80,7 +112,7 @@ export default function NewSourcePage() {
     }
   };
 
-  const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres") => {
+  const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres" | "kafka" | "mongodb" | "redis" | "minio") => {
     let payload: SourceProbeRequest;
     if (targetEngine === "postgres") {
       setDbType("PostgreSQL");
@@ -106,6 +138,106 @@ export default function NewSourcePage() {
         encrypt: false,
         trust_server_certificate: true,
         connection_timeout: 30
+      };
+    } else if (targetEngine === "kafka") {
+      setDbType("Apache Kafka");
+      setConnectionName("kafka-finlake-hub");
+      setHost("kafka");
+      setPort(9092);
+      setDatabase("finlake.polyglot.events");
+      setAuthMethod("PLAINTEXT / KRaft");
+      setUsername("anonymous");
+      setPassword("");
+      setEncrypt(false);
+      setTrustCert(true);
+      setTimeoutSec(10);
+      payload = {
+        connection_name: "kafka-finlake-hub",
+        type: "kafka",
+        host: "kafka",
+        port: 9092,
+        database: "finlake.polyglot.events",
+        username: "anonymous",
+        password: "",
+        auth_method: "plaintext",
+        encrypt: false,
+        trust_server_certificate: true,
+        connection_timeout: 10
+      };
+    } else if (targetEngine === "mongodb") {
+      setDbType("MongoDB");
+      setConnectionName("mongo-customer-profiles");
+      setHost("mongo-cluster.corp.internal");
+      setPort(27017);
+      setDatabase("customer_profiles");
+      setAuthMethod("SCRAM-SHA-256");
+      setUsername("finlake_app");
+      setPassword("SecretMongoPass2026!");
+      setEncrypt(true);
+      setTrustCert(true);
+      setTimeoutSec(15);
+      payload = {
+        connection_name: "mongo-customer-profiles",
+        type: "mongodb",
+        host: "mongo-cluster.corp.internal",
+        port: 27017,
+        database: "customer_profiles",
+        username: "finlake_app",
+        password: "SecretMongoPass2026!",
+        auth_method: "scram-sha-256",
+        encrypt: true,
+        trust_server_certificate: true,
+        connection_timeout: 15
+      };
+    } else if (targetEngine === "redis") {
+      setDbType("Redis");
+      setConnectionName("redis-session-cache");
+      setHost("redis-cache.corp.internal");
+      setPort(6379);
+      setDatabase("db0");
+      setAuthMethod("AUTH Token");
+      setUsername("default");
+      setPassword("RedisSecret2026!");
+      setEncrypt(false);
+      setTrustCert(true);
+      setTimeoutSec(5);
+      payload = {
+        connection_name: "redis-session-cache",
+        type: "redis",
+        host: "redis-cache.corp.internal",
+        port: 6379,
+        database: "db0",
+        username: "default",
+        password: "RedisSecret2026!",
+        auth_method: "auth",
+        encrypt: false,
+        trust_server_certificate: true,
+        connection_timeout: 5
+      };
+    } else if (targetEngine === "minio") {
+      setDbType("MinIO / S3");
+      setConnectionName("minio-archive-s3");
+      setHost("minio");
+      setPort(9000);
+      setDatabase("finlake");
+      setAuthMethod("S3 SigV4");
+      setUsername("finlake_admin");
+      setPassword("finlake_secret_key_2026!");
+      setEncrypt(false);
+      setTrustCert(true);
+      setTimeoutSec(10);
+      payload = {
+        connection_name: "minio-archive-s3",
+        type: "minio",
+        host: "minio",
+        port: 9000,
+        database: "finlake",
+        username: "finlake_admin",
+        password: "finlake_secret_key_2026!",
+        auth_method: "s3-sigv4",
+        encrypt: false,
+        trust_server_certificate: true,
+        connection_timeout: 10
       };
     } else {
       setDbType("Microsoft SQL Server");
@@ -137,16 +269,22 @@ export default function NewSourcePage() {
   };
 
   const handleTestConnection = async () => {
-    const isPg = dbType === "PostgreSQL";
+    let resolvedType = "sqlserver";
+    if (dbType === "PostgreSQL") resolvedType = "postgresql";
+    else if (dbType === "Apache Kafka") resolvedType = "kafka";
+    else if (dbType === "MongoDB") resolvedType = "mongodb";
+    else if (dbType === "Redis") resolvedType = "redis";
+    else if (dbType === "MinIO / S3") resolvedType = "minio";
+
     const payload: SourceProbeRequest = {
       connection_name: connectionName,
-      type: isPg ? "postgresql" : "sqlserver",
+      type: resolvedType,
       host: host,
       port: port,
       database: database,
       username: username,
       password: password,
-      auth_method: isPg ? "password" : "sqlserver",
+      auth_method: authMethod,
       encrypt: encrypt,
       trust_server_certificate: trustCert,
       connection_timeout: timeout
@@ -240,28 +378,54 @@ export default function NewSourcePage() {
       {/* ------------------------------------------------------------------- */}
       {/* Top Demo Accelerator Bar                                           */}
       {/* ------------------------------------------------------------------- */}
-      <div className="flex items-center justify-between bg-white border border-zinc-200 px-4 py-2.5 rounded-xl shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-zinc-200 px-4 py-2.5 rounded-xl shadow-xs">
         <div className="flex items-center gap-2 text-xs text-zinc-600">
           <Zap className="h-4 w-4 text-amber-500" />
-          <span className="font-semibold text-zinc-900">Accélérateurs Démo :</span>
-          <span>Remplissage automatique et test immédiat</span>
+          <span className="font-semibold text-zinc-900">Accélérateurs Polyglottes :</span>
+          <span>Test immédiat par famille de base de données</span>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleQuickDemo("postgres")}
-            disabled={isFormLocked}
-            className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1.5"
-          >
-            <Zap className="h-3 w-3 text-emerald-600" />
-            ⚡ Démo PostgreSQL 16
-          </button>
+        <div className="flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => handleQuickDemo("sqlserver")}
             disabled={isFormLocked}
-            className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1.5"
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
           >
-            <Zap className="h-3 w-3 text-blue-600" />
-            ⚡ Démo SQL Server 2022
+            <Zap className="h-3 w-3 text-blue-600" /> SQL Server
+          </button>
+          <button
+            onClick={() => handleQuickDemo("postgres")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-emerald-600" /> PostgreSQL
+          </button>
+          <button
+            onClick={() => handleQuickDemo("kafka")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-purple-600" /> Kafka (KRaft)
+          </button>
+          <button
+            onClick={() => handleQuickDemo("mongodb")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-emerald-700" /> MongoDB
+          </button>
+          <button
+            onClick={() => handleQuickDemo("redis")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-rose-600" /> Redis
+          </button>
+          <button
+            onClick={() => handleQuickDemo("minio")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-amber-600" /> MinIO S3
           </button>
         </div>
       </div>
@@ -271,10 +435,10 @@ export default function NewSourcePage() {
       {/* ------------------------------------------------------------------- */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
-          {dbType === "PostgreSQL" ? "Ajouter une connexion PostgreSQL" : "Ajouter une connexion SQL Server"}
+          Ajouter une source de données ({dbType})
         </h1>
         <p className="text-sm text-zinc-500 mt-1 max-w-3xl leading-normal">
-          Saisissez les informations dont la plateforme a besoin pour joindre votre base. Testez la connexion avant de l’enregistrer pour vérifier qu’elle fonctionne.
+          Saisissez les informations dont la plateforme a besoin pour joindre votre source. Testez la connexion avant de l’enregistrer pour vérifier qu’elle fonctionne.
         </p>
       </div>
 
@@ -310,10 +474,22 @@ export default function NewSourcePage() {
                   disabled={isFormLocked}
                   value={dbType}
                   onChange={(e) => handleTypeChange(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400"
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-medium"
                 >
-                  <option value="Microsoft SQL Server">Microsoft SQL Server</option>
-                  <option value="PostgreSQL">PostgreSQL</option>
+                  <optgroup label="Bases Relationnelles (SQL / OLTP)">
+                    <option value="Microsoft SQL Server">Microsoft SQL Server</option>
+                    <option value="PostgreSQL">PostgreSQL</option>
+                  </optgroup>
+                  <optgroup label="Hub d'Événements & Sinks">
+                    <option value="Apache Kafka">Apache Kafka (KRaft Event Hub & Sinks)</option>
+                  </optgroup>
+                  <optgroup label="Bases NoSQL & Clé-Valeur">
+                    <option value="MongoDB">MongoDB (Document Store)</option>
+                    <option value="Redis">Redis (Key-Value Cache)</option>
+                  </optgroup>
+                  <optgroup label="Stockage Objet">
+                    <option value="MinIO / S3">MinIO / S3 (Object Storage)</option>
+                  </optgroup>
                 </select>
               </div>
 

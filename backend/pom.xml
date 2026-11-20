@@ -74,6 +74,12 @@
             <version>${trino.version}</version>
         </dependency>
 
+        <!-- Apache Kafka Integration (Polyglot Event Bus & Sinks) -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
         <!-- Actuator for Health Metrics -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
