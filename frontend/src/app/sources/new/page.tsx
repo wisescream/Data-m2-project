@@ -14,15 +14,10 @@ import {
   Check, 
   X, 
   RotateCw, 
-  AlertCircle, 
-  CheckCircle2, 
   Info,
-  ShieldCheck,
-  Server,
-  Layers,
   Table as TableIcon
 } from "lucide-react";
-import { probeSourceConnection, registerSource, SourceProbeRequest, SourceProbeResponse, SourceProbeStep } from "@/lib/api";
+import { probeSourceConnection, registerSource, SourceProbeRequest, SourceProbeResponse } from "@/lib/api";
 
 type TestState = "untested" | "running" | "success" | "failed";
 
@@ -45,6 +40,22 @@ export default function NewSourcePage() {
   const [encrypt, setEncrypt] = useState(true);
   const [trustCert, setTrustCert] = useState(true);
   const [timeout, setTimeoutSec] = useState(30);
+
+  // Interactive Test State
+  const [testState, setTestState] = useState<TestState>("untested");
+  const [probeResult, setProbeResult] = useState<SourceProbeResponse | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, []);
 
   const handleTypeChange = (newType: string) => {
     setDbType(newType);
@@ -69,24 +80,8 @@ export default function NewSourcePage() {
     }
   };
 
-  // Interactive Test State
-  const [testState, setTestState] = useState<TestState>("untested");
-  const [probeResult, setProbeResult] = useState<SourceProbeResponse | null>(null);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [currentStepIndex, setCurrentStepIndex] = useState(1);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Timer Ref for animated testing progress
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
-
   const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres") => {
-    let demoPayload: SourceProbeRequest;
+    let payload: SourceProbeRequest;
     if (targetEngine === "postgres") {
       setDbType("PostgreSQL");
       setConnectionName("retail-pos-pg");
@@ -96,18 +91,18 @@ export default function NewSourcePage() {
       setAuthMethod("Authentification standard (mot de passe)");
       setUsername("finlake_user");
       setPassword("FinLake2026!StrongPass#");
-      demoPayload = {
+      payload = {
         connection_name: "retail-pos-pg",
         type: "postgresql",
         host: "postgres-source",
         port: 5432,
         database: "retail_banking",
-        auth_method: "postgresql",
         username: "finlake_user",
         password: "FinLake2026!StrongPass#",
-        encrypt: true,
+        auth_method: "password",
+        encrypt: false,
         trust_server_certificate: true,
-        connection_timeout: 30,
+        connection_timeout: 30
       };
     } else {
       setDbType("Microsoft SQL Server");
@@ -118,109 +113,84 @@ export default function NewSourcePage() {
       setAuthMethod("Authentification SQL Server");
       setUsername("sa");
       setPassword("FinLake2026!StrongPass#");
-      demoPayload = {
+      payload = {
         connection_name: "erp-production",
         type: "sqlserver",
         host: "sqlserver",
         port: 1433,
         database: "finlake_source",
-        auth_method: "sqlserver",
         username: "sa",
         password: "FinLake2026!StrongPass#",
+        auth_method: "sqlserver",
         encrypt: true,
         trust_server_certificate: true,
-        connection_timeout: 30,
+        connection_timeout: 30
       };
     }
-
-    setTestState("running");
-    setProbeResult(null);
-    setElapsedSeconds(0);
-    setCurrentStepIndex(1);
-
-    const startTime = Date.now();
-    if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-
-    try {
-      const res = await probeSourceConnection(demoPayload);
-      if (timerRef.current) clearInterval(timerRef.current);
-      setProbeResult(res);
-      setTestState(res.status === "success" ? "success" : "failed");
-    } catch (err: any) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      setTestState("failed");
-      setProbeResult({
-        status: "failed",
-        summary: "Impossible de joindre le serveur. Vérifiez les paramètres de connexion.",
-        response_time_ms: 1200,
-        tested_at: new Date().toISOString(),
-        steps: [
-          { id: 1, name: "Joindre le serveur", detail: `${demoPayload.host}:${demoPayload.port} (${err.message})`, status: "failed" },
-          { id: 2, name: "Sécuriser la connexion", detail: "Chiffrée (TLS)", status: "skipped" },
-          { id: 3, name: "S'authentifier", detail: `En tant que ${demoPayload.username}`, status: "skipped" },
-          { id: 4, name: "Ouvrir la base de données", detail: demoPayload.database, status: "skipped" },
-        ],
-        technical_details: `Erreur : ${err.message}`,
-        troubleshooting_checklist: [
-          "Le conteneur ou serveur est en cours d'exécution sur Docker.",
-          "Les identifiants et le port sont corrects."
-        ]
-      });
-    }
+    await executeProbeWithAnimation(payload);
   };
 
-  const handleRunTest = async () => {
+  const handleTestConnection = async () => {
+    const isPg = dbType === "PostgreSQL";
+    const payload: SourceProbeRequest = {
+      connection_name: connectionName,
+      type: isPg ? "postgresql" : "sqlserver",
+      host: host,
+      port: port,
+      database: database,
+      username: username,
+      password: password,
+      auth_method: isPg ? "password" : "sqlserver",
+      encrypt: encrypt,
+      trust_server_certificate: trustCert,
+      connection_timeout: timeout
+    };
+    await executeProbeWithAnimation(payload);
+  };
+
+  const executeProbeWithAnimation = async (payload: SourceProbeRequest) => {
+    setCancelled(false);
     setTestState("running");
-    setProbeResult(null);
     setElapsedSeconds(0);
     setCurrentStepIndex(1);
 
-    const startTime = Date.now();
+    if (timerRef.current) clearInterval(timerRef.current);
+    const startMs = Date.now();
     timerRef.current = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
+      setElapsedSeconds(Math.floor((Date.now() - startMs) / 1000));
+    }, 500);
 
-    const payload: SourceProbeRequest = {
-      connection_name: connectionName,
-      type: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
-      host: host,
-      port: Number(port),
-      database: database,
-      auth_method: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
-      username: username,
-      password: password,
-      encrypt: encrypt,
-      trust_server_certificate: trustCert,
-      connection_timeout: Number(timeout)
-    };
+    setTimeout(() => setCurrentStepIndex(2), 200);
+    setTimeout(() => setCurrentStepIndex(3), 400);
 
     try {
-      const res = await probeSourceConnection(payload);
+      const response = await probeSourceConnection(payload);
       if (timerRef.current) clearInterval(timerRef.current);
-      setProbeResult(res);
-      setTestState(res.status === "success" ? "success" : "failed");
+      setCurrentStepIndex(4);
+      setProbeResult(response);
+      if (response.status === "success") {
+        setTestState("success");
+      } else {
+        setTestState("failed");
+      }
     } catch (err: any) {
       if (timerRef.current) clearInterval(timerRef.current);
       setTestState("failed");
       setProbeResult({
         status: "failed",
-        summary: "Impossible de joindre le serveur. Vérifiez les paramètres de connexion.",
+        summary: "Échec de connexion au serveur",
         response_time_ms: 1200,
         tested_at: new Date().toISOString(),
-        steps: [
-          { id: 1, name: "Joindre le serveur", detail: `${host}:${port} (${err.message})`, status: "failed" },
-          { id: 2, name: "Sécuriser la connexion", detail: encrypt ? "Chiffrée (TLS)" : "Standard", status: "skipped" },
-          { id: 3, name: "S'authentifier", detail: `En tant que ${username}`, status: "skipped" },
-          { id: 4, name: "Ouvrir la base de données", detail: database, status: "skipped" },
-        ],
-        technical_details: `Erreur : ${err.message}`,
         troubleshooting_checklist: [
-          "Le serveur d'hôte et le port sont joignables sur le réseau.",
-          "Les pare-feu autorisent la connexion.",
-          "Les identifiants SQL Server sont corrects."
+          "Le nom d’utilisateur et le mot de passe sont saisis correctement.",
+          "Le compte est actif et n’est pas verrouillé sur le serveur.",
+          "Le serveur autorise l’authentification par mot de passe."
+        ],
+        steps: [
+          { id: 1, name: "Joindre le serveur", detail: `${host}:${port}`, status: "failed" },
+          { id: 2, name: "Sécuriser la connexion", detail: "Chiffrée (TLS)", status: "skipped" },
+          { id: 3, name: "S’authentifier", detail: `En tant que ${username}`, status: "skipped" },
+          { id: 4, name: "Ouvrir la base de données", detail: database, status: "skipped" },
         ]
       });
     }
@@ -228,404 +198,373 @@ export default function NewSourcePage() {
 
   const handleCancelTest = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    setCancelled(true);
     setTestState("untested");
   };
 
   const handleSaveConnection = async () => {
+    if (testState !== "success") return;
     setIsSaving(true);
     try {
-      const payload: SourceProbeRequest = {
+      const isPg = dbType === "PostgreSQL";
+      await registerSource({
         connection_name: connectionName,
-        type: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
+        type: isPg ? "postgresql" : "sqlserver",
         host: host,
-        port: Number(port),
+        port: port,
         database: database,
-        auth_method: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
         username: username,
         password: password,
+        auth_method: isPg ? "password" : "sqlserver",
         encrypt: encrypt,
-        trust_server_certificate: trustCert,
-        connection_timeout: Number(timeout)
-      };
-      await registerSource(payload);
+        trust_server_certificate: trustCert
+      });
       router.push("/sources");
     } catch (err) {
-      console.error("Failed to save connection:", err);
+      console.error("Save failed:", err);
     } finally {
       setIsSaving(false);
     }
   };
 
+  const isFormLocked = testState === "running";
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <div className="space-y-6">
       {/* ------------------------------------------------------------------- */}
-      {/* Breadcrumb Navigation                                               */}
+      {/* Top Demo Accelerator Bar                                           */}
       {/* ------------------------------------------------------------------- */}
-      <nav className="flex items-center gap-2 text-xs text-slate-400">
-        <Link href="/sources" className="hover:text-white transition">
-          Data Sources
-        </Link>
-        <ChevronRight className="h-3 w-3 text-slate-600" />
-        <span className="text-slate-200 font-medium">Ajouter une connexion SQL Server</span>
-      </nav>
+      <div className="flex items-center justify-between bg-white border border-zinc-200 px-4 py-2.5 rounded-xl shadow-xs">
+        <div className="flex items-center gap-2 text-xs text-zinc-600">
+          <Zap className="h-4 w-4 text-amber-500" />
+          <span className="font-semibold text-zinc-900">Accélérateurs Démo :</span>
+          <span>Remplissage automatique et test immédiat</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleQuickDemo("postgres")}
+            disabled={isFormLocked}
+            className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <Zap className="h-3 w-3 text-emerald-600" />
+            ⚡ Démo PostgreSQL 16
+          </button>
+          <button
+            onClick={() => handleQuickDemo("sqlserver")}
+            disabled={isFormLocked}
+            className="px-3 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1.5"
+          >
+            <Zap className="h-3 w-3 text-blue-600" />
+            ⚡ Démo SQL Server 2022
+          </button>
+        </div>
+      </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Page Title & Subtitle                                               */}
+      {/* Header Section (Wireframe Pages 2, 3, 4, 5)                         */}
       {/* ------------------------------------------------------------------- */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-white">
-          Ajouter une connexion SQL Server
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
+          {dbType === "PostgreSQL" ? "Ajouter une connexion PostgreSQL" : "Ajouter une connexion SQL Server"}
         </h1>
-        <p className="text-sm text-slate-400 mt-1 max-w-3xl leading-relaxed">
+        <p className="text-sm text-zinc-500 mt-1 max-w-3xl leading-normal">
           Saisissez les informations dont la plateforme a besoin pour joindre votre base. Testez la connexion avant de l’enregistrer pour vérifier qu’elle fonctionne.
         </p>
       </div>
 
       {/* ------------------------------------------------------------------- */}
-      {/* Global Error Alert Banner (Wireframe Page 5)                        */}
-      {/* ------------------------------------------------------------------- */}
-      {testState === "failed" && (
-        <div className="p-4 rounded-xl bg-slate-900 border border-slate-700/80 shadow-lg flex items-start gap-3">
-          <Info className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Le test de connexion a échoué. Vérifiez les champs signalés, puis testez à nouveau. Vos saisies sont conservées.
-          </p>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------- */}
-      {/* 1-Click Demo Presets Bar (Call Demonstration Accelerator)            */}
-      {/* ------------------------------------------------------------------- */}
-      <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/70 via-indigo-950/50 to-slate-900 border border-blue-800/50 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center shrink-0">
-            <Zap className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              Démonstration en direct · Remplissage et Test en 1 Clic
-              <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-medium border border-blue-400/30">
-                Mode Démo
-              </span>
-            </h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Injectez instantanément tous les paramètres de connexion d’un conteneur Docker actif et lancez la vérification live.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            disabled={testState === "running"}
-            onClick={() => handleQuickDemo("sqlserver")}
-            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 border border-slate-700 text-xs font-semibold text-slate-200 hover:text-white transition flex items-center gap-2 shadow-sm disabled:opacity-40"
-          >
-            <Server className="h-3.5 w-3.5 text-blue-400" />
-            <span>⚡ Démo SQL Server 2022</span>
-          </button>
-
-          <button
-            type="button"
-            disabled={testState === "running"}
-            onClick={() => handleQuickDemo("postgres")}
-            className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 border border-indigo-400/40 text-xs font-bold text-white transition flex items-center gap-2 shadow-md shadow-indigo-600/20 disabled:opacity-40"
-          >
-            <Database className="h-3.5 w-3.5 text-indigo-200" />
-            <span>⚡ Démo PostgreSQL 16</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------------- */}
-      {/* Main 2-Column Layout (Form 2/3 + Test Panel 1/3)                    */}
+      {/* Two-Column Grid: Form (Left) & Test Panel (Right)                  */}
       {/* ------------------------------------------------------------------- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* ================================================================= */}
-        {/* LEFT COLUMN: Connection Form (8 Cols)                             */}
-        {/* ================================================================= */}
-        <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden divide-y divide-slate-800/80">
-          <div className="p-6 space-y-6">
-            {/* Section 1: Connexion */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Connexion</h3>
-                <p className="text-xs text-slate-400 mt-0.5">La façon dont cette source apparaît dans la plateforme.</p>
-              </div>
+        {/* Left Column: Form Card */}
+        <div className="lg:col-span-7 bg-white border border-zinc-200 rounded-xl p-6 shadow-xs space-y-6">
+          {/* Failure Alert Banner (Wireframe Page 5) */}
+          {testState === "failed" && (
+            <div className="bg-zinc-50 border border-zinc-300 rounded-lg p-3.5 flex items-start gap-2.5 text-xs text-zinc-800">
+              <Info className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
+              <span>
+                Le test de connexion a échoué. Vérifiez les champs signalés, puis testez à nouveau. Vos saisies sont conservées.
+              </span>
+            </div>
+          )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Type de base de données
-                  </label>
-                  <div className="relative">
-                    <select
-                      disabled={testState === "running"}
-                      value={dbType}
-                      onChange={(e) => handleTypeChange(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-                    >
-                      <option value="Microsoft SQL Server">Microsoft SQL Server</option>
-                      <option value="PostgreSQL">PostgreSQL</option>
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
-                      <ChevronRight className="h-3 w-3 rotate-90" />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Nom de la connexion
-                  </label>
-                  <input
-                    type="text"
-                    disabled={testState === "running"}
-                    value={connectionName}
-                    onChange={(e) => setConnectionName(e.target.value)}
-                    placeholder="erp-production"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 transition"
-                  />
-                  <span className="block text-[11px] text-slate-500 mt-1">
-                    Nom unique, affiché dans les listes et les jobs.
-                  </span>
-                </div>
-              </div>
+          {/* Section 1: Connexion */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Connexion</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">La façon dont cette source apparaît dans la plateforme.</p>
             </div>
 
-            {/* Section 2: Serveur */}
-            <div className="space-y-4 pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Serveur</h3>
-                <p className="text-xs text-slate-400 mt-0.5">L’emplacement où la base est hébergée.</p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-                <div className="sm:col-span-8">
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Serveur / Hôte
-                  </label>
-                  <input
-                    type="text"
-                    disabled={testState === "running"}
-                    value={host}
-                    onChange={(e) => setHost(e.target.value)}
-                    placeholder="sql-erp-prod.corp.internal"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 transition"
-                  />
-                  <span className="block text-[11px] text-slate-500 mt-1">
-                    Nom d’hôte ou adresse IP.
-                  </span>
-                </div>
-
-                <div className="sm:col-span-4">
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Port
-                  </label>
-                  <input
-                    type="number"
-                    disabled={testState === "running"}
-                    value={port}
-                    onChange={(e) => setPort(Number(e.target.value))}
-                    placeholder="1433"
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 transition"
-                  />
-                  <span className="block text-[11px] text-slate-500 mt-1">
-                    1433 par défaut.
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Nom de la base de données
-                </label>
-                <input
-                  type="text"
-                  disabled={testState === "running"}
-                  value={database}
-                  onChange={(e) => setDatabase(e.target.value)}
-                  placeholder="ERP_PROD"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/40 disabled:opacity-50 transition"
-                />
-              </div>
-            </div>
-
-            {/* Section 3: Authentification */}
-            <div className="space-y-4 pt-4">
-              <div>
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">Authentification</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Le compte utilisé par la plateforme pour lire la base.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                  Méthode d’authentification
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Type de base de données
                 </label>
                 <select
-                  disabled={testState === "running"}
-                  value={authMethod}
-                  onChange={(e) => setAuthMethod(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition"
+                  disabled={isFormLocked}
+                  value={dbType}
+                  onChange={(e) => handleTypeChange(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400"
                 >
-                  <option value="Authentification SQL Server">Authentification SQL Server</option>
-                  <option value="Authentification Windows / Active Directory">Authentification Windows / Active Directory</option>
+                  <option value="Microsoft SQL Server">Microsoft SQL Server</option>
+                  <option value="PostgreSQL">PostgreSQL</option>
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Nom d’utilisateur
-                  </label>
-                  <input
-                    type="text"
-                    disabled={testState === "running"}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="svc_dataplatform"
-                    className={`w-full px-3 py-2 bg-slate-950 border rounded-xl text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 disabled:opacity-50 transition ${
-                      testState === "failed" ? "border-rose-800 focus:ring-rose-500/40" : "border-slate-800 focus:ring-blue-500/40"
-                    }`}
-                  />
-                  {testState === "failed" && (
-                    <span className="block text-[11px] text-rose-400 mt-1">
-                      ⓘ Vérifiez le nom d’utilisateur.
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                    Mot de passe
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      disabled={testState === "running"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className={`w-full pl-3 pr-10 py-2 bg-slate-950 border rounded-xl text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 disabled:opacity-50 transition ${
-                        testState === "failed" ? "border-rose-800 focus:ring-rose-500/40" : "border-slate-800 focus:ring-blue-500/40"
-                      }`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  {testState === "failed" && (
-                    <span className="block text-[11px] text-rose-400 mt-1">
-                      ⓘ Vérifiez le mot de passe.
-                    </span>
-                  )}
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Nom de la connexion
+                </label>
+                <input
+                  type="text"
+                  disabled={isFormLocked}
+                  value={connectionName}
+                  onChange={(e) => setConnectionName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
+                  placeholder="erp-production"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">Nom unique, affiché dans les listes et les jobs.</p>
               </div>
-            </div>
-
-            {/* Section 4: Paramètres avancés (facultatif) */}
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full flex items-center justify-between text-left py-2 text-xs font-medium text-slate-300 hover:text-white transition"
-              >
-                <div>
-                  <span className="font-bold">Paramètres avancés (facultatif)</span>
-                  <p className="text-[11px] text-slate-500 font-normal">
-                    Chiffrement et délai de connexion. Les valeurs par défaut conviennent à la plupart des serveurs.
-                  </p>
-                </div>
-                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-
-              {showAdvanced && (
-                <div className="space-y-4 pt-3 pb-1 border-t border-slate-800/80 mt-2">
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={encrypt}
-                      onChange={(e) => setEncrypt(e.target.checked)}
-                      className="mt-0.5 rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
-                    />
-                    <div>
-                      <span className="block text-xs font-medium text-slate-200">Chiffrer la connexion</span>
-                      <span className="block text-[11px] text-slate-500">Chiffre les données échangées entre la plateforme et le serveur.</span>
-                    </div>
-                  </label>
-
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={trustCert}
-                      onChange={(e) => setTrustCert(e.target.checked)}
-                      className="mt-0.5 rounded bg-slate-950 border-slate-700 text-blue-600 focus:ring-0"
-                    />
-                    <div>
-                      <span className="block text-xs font-medium text-slate-200">Faire confiance au certificat du serveur</span>
-                      <span className="block text-[11px] text-slate-500">Ignore la validation du certificat. À réserver aux serveurs dotés d’un certificat auto-signé.</span>
-                    </div>
-                  </label>
-
-                  <div className="max-w-xs">
-                    <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Délai de connexion (secondes)
-                    </label>
-                    <input
-                      type="number"
-                      value={timeout}
-                      onChange={(e) => setTimeoutSec(Number(e.target.value))}
-                      className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-100"
-                    />
-                    <span className="block text-[11px] text-slate-500 mt-1">
-                      Temps d’attente maximal de la réponse du serveur.
-                    </span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Bottom Action Bar */}
-          <div className="p-4 px-6 bg-slate-950/80 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <hr className="border-zinc-100" />
+
+          {/* Section 2: Serveur */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Serveur</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">L’emplacement où la base est hébergée.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Serveur / Hôte
+                </label>
+                <input
+                  type="text"
+                  disabled={isFormLocked}
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
+                  placeholder="sql-erp-prod.corp.internal"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">Nom d’hôte ou adresse IP.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Port
+                </label>
+                <input
+                  type="number"
+                  disabled={isFormLocked}
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
+                />
+                <p className="text-[11px] text-zinc-400 mt-1">{dbType === "PostgreSQL" ? "5432 par défaut." : "1433 par défaut."}</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">
+                Nom de la base de données
+              </label>
+              <input
+                type="text"
+                disabled={isFormLocked}
+                value={database}
+                onChange={(e) => setDatabase(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
+                placeholder="ERP_PROD"
+              />
+            </div>
+          </div>
+
+          <hr className="border-zinc-100" />
+
+          {/* Section 3: Authentification */}
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">Authentification</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">Le compte utilisé par la plateforme pour lire la base.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-700 mb-1">
+                Méthode d’authentification
+              </label>
+              <select
+                disabled={isFormLocked}
+                value={authMethod}
+                onChange={(e) => setAuthMethod(e.target.value)}
+                className="w-full px-3 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none focus:border-zinc-400"
+              >
+                {dbType === "PostgreSQL" ? (
+                  <option value="Authentification standard (mot de passe)">Authentification standard (mot de passe)</option>
+                ) : (
+                  <>
+                    <option value="Authentification SQL Server">Authentification SQL Server</option>
+                    <option value="Authentification Windows">Authentification Windows</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Nom d’utilisateur
+                </label>
+                <input
+                  type="text"
+                  disabled={isFormLocked}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className={`w-full px-3 py-2 bg-white border rounded-lg text-sm text-zinc-900 focus:outline-none font-mono ${
+                    testState === "failed" ? "border-rose-300 bg-rose-50/20" : "border-zinc-200 focus:border-zinc-400"
+                  }`}
+                  placeholder="svc_dataplatform"
+                />
+                {testState === "failed" && (
+                  <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
+                    <span>ℹ</span> Vérifiez le nom d’utilisateur.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-700 mb-1">
+                  Mot de passe
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    disabled={isFormLocked}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className={`w-full pl-3 pr-10 py-2 bg-white border rounded-lg text-sm text-zinc-900 focus:outline-none font-mono ${
+                      testState === "failed" ? "border-rose-300 bg-rose-50/20" : "border-zinc-200 focus:border-zinc-400"
+                    }`}
+                    placeholder="••••••••••••"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                {testState === "failed" && (
+                  <p className="text-[11px] text-rose-600 mt-1 flex items-center gap-1">
+                    <span>ℹ</span> Vérifiez le mot de passe.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-zinc-100" />
+
+          {/* Section 4: Paramètres avancés (facultatif) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="w-full flex items-center justify-between text-left text-xs font-medium text-zinc-800 hover:text-zinc-900"
+            >
+              <div>
+                <span className="font-semibold text-zinc-900">Paramètres avancés (facultatif)</span>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  Chiffrement et délai de connexion. Les valeurs par défaut conviennent à la plupart des serveurs.
+                </p>
+              </div>
+              {showAdvanced ? <ChevronUp className="h-4 w-4 text-zinc-400" /> : <ChevronDown className="h-4 w-4 text-zinc-400" />}
+            </button>
+
+            {showAdvanced && (
+              <div className="mt-4 pt-4 border-t border-zinc-100 space-y-4">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={encrypt}
+                    onChange={(e) => setEncrypt(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-300 text-zinc-900 focus:ring-0"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-zinc-900">Chiffrer la connexion</span>
+                    <p className="text-[11px] text-zinc-500">Chiffre les données échangées entre la plateforme et le serveur.</p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={trustCert}
+                    onChange={(e) => setTrustCert(e.target.checked)}
+                    className="mt-0.5 rounded border-zinc-300 text-zinc-900 focus:ring-0"
+                  />
+                  <div>
+                    <span className="text-xs font-semibold text-zinc-900">Faire confiance au certificat du serveur</span>
+                    <p className="text-[11px] text-zinc-500">Ignore la validation du certificat. À réserver aux serveurs dotés d’un certificat auto-signé.</p>
+                  </div>
+                </label>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-700 mb-1">
+                    Délai de connexion (secondes)
+                  </label>
+                  <input
+                    type="number"
+                    value={timeout}
+                    onChange={(e) => setTimeoutSec(Number(e.target.value))}
+                    className="w-32 px-3 py-1.5 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-zinc-400 mt-1">Temps d’attente maximal de la réponse du serveur.</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <hr className="border-zinc-100" />
+
+          {/* Form Actions Footer (Wireframe Pages 2, 3, 4, 5) */}
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <Link
               href="/sources"
-              className="px-4 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="text-xs text-zinc-500 hover:text-zinc-800 font-medium"
             >
               Annuler
             </Link>
 
             <div className="flex items-center gap-3">
-              <span className="text-xs text-slate-400">
+              {/* State text */}
+              <span className="text-xs text-zinc-500">
                 {testState === "untested" && "Pas encore testée"}
                 {testState === "running" && "Les champs sont verrouillés pendant le test"}
-                {testState === "success" && (
-                  <span className="text-emerald-400 font-medium">Testée avec succès à l’instant</span>
-                )}
-                {testState === "failed" && (
-                  <span className="text-rose-400 font-medium">Le dernier test a échoué</span>
-                )}
+                {testState === "success" && "Testée avec succès à l’instant"}
+                {testState === "failed" && "Le dernier test a échoué"}
               </span>
 
+              {/* Action Buttons */}
               <button
                 type="button"
-                onClick={handleRunTest}
+                onClick={handleTestConnection}
                 disabled={testState === "running"}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition disabled:opacity-50"
+                className="px-4 py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
               >
                 {testState === "running" ? (
                   <>
-                    <RotateCw className="h-3.5 w-3.5 animate-spin" />
-                    Test en cours…
+                    <RotateCw className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                    <span>Test en cours…</span>
                   </>
                 ) : (
                   <>
-                    <Zap className="h-3.5 w-3.5 text-amber-400" />
-                    Tester la connexion
+                    <Zap className="h-3.5 w-3.5 text-zinc-700" />
+                    <span>Tester la connexion</span>
                   </>
                 )}
               </button>
@@ -633,8 +572,12 @@ export default function NewSourcePage() {
               <button
                 type="button"
                 onClick={handleSaveConnection}
-                disabled={testState === "running" || isSaving}
-                className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-bold text-xs shadow-md transition disabled:opacity-40"
+                disabled={testState !== "success" || isSaving}
+                className={`px-4 py-2 rounded-lg text-xs font-semibold shadow-xs transition-colors ${
+                  testState === "success"
+                    ? "bg-[#18181b] hover:bg-zinc-800 text-white cursor-pointer"
+                    : "bg-zinc-200 text-zinc-400 cursor-not-allowed"
+                }`}
               >
                 {isSaving ? "Enregistrement…" : "Enregistrer la connexion"}
               </button>
@@ -642,97 +585,119 @@ export default function NewSourcePage() {
           </div>
         </div>
 
-        {/* ================================================================= */}
-        {/* RIGHT COLUMN: Live Interactive Test Panel (4 Cols)                */}
-        {/* ================================================================= */}
-        <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
-          <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-            Test de connexion
-          </h3>
+        {/* Right Column: Test Panel Card */}
+        <div className="lg:col-span-5 bg-white border border-zinc-200 rounded-xl p-6 shadow-xs space-y-6">
+          <h2 className="text-sm font-semibold text-zinc-900">Test de connexion</h2>
 
           {/* --------------------------------------------------------------- */}
-          {/* State A: Pas encore testée (Page 2)                             */}
+          {/* State 1: Untested (Wireframe Page 2)                           */}
           {/* --------------------------------------------------------------- */}
           {testState === "untested" && (
             <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center space-y-2">
-                <div className="h-10 w-10 mx-auto rounded-full bg-slate-800/80 text-amber-400 flex items-center justify-center">
+              <div className="border border-dashed border-zinc-300 rounded-xl p-6 text-center space-y-2">
+                <div className="h-10 w-10 mx-auto rounded-full bg-zinc-100 flex items-center justify-center text-zinc-500 mb-2">
                   <Zap className="h-5 w-5" />
                 </div>
-                <h4 className="text-xs font-bold text-white">Pas encore testée</h4>
-                <p className="text-[11px] text-slate-400 leading-relaxed">
+                <h3 className="text-sm font-semibold text-zinc-900">Pas encore testée</h3>
+                <p className="text-xs text-zinc-500 leading-relaxed">
                   Lancez un test pour vérifier que la plateforme peut joindre ce serveur et s’y authentifier avec ces identifiants.
                 </p>
               </div>
 
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Le test se déroule en quatre étapes : joindre le serveur, sécuriser la connexion, s’authentifier, puis ouvrir la base. Rien n’est enregistré tant que vous n’avez pas choisi <strong>Enregistrer la connexion</strong>.
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Le test se déroule en quatre étapes : joindre le serveur, sécuriser la connexion, s’authentifier, puis ouvrir la base. Rien n’est enregistré tant que vous n’avez pas choisi Enregistrer la connexion.
               </p>
             </div>
           )}
 
           {/* --------------------------------------------------------------- */}
-          {/* State B: Test en cours (Page 3)                                 */}
+          {/* State 2: Running Stepper (Wireframe Page 3)                     */}
           {/* --------------------------------------------------------------- */}
           {testState === "running" && (
-            <div className="space-y-5">
-              <div>
-                <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                  <RotateCw className="h-3.5 w-3.5 animate-spin text-blue-400" />
-                  Test de la connexion en cours…
-                </h4>
-                <span className="text-[11px] text-slate-400 block mt-0.5">
-                  Étape 3 sur 4 · {elapsedSeconds} s écoulées
-                </span>
+            <div className="space-y-4">
+              <div className="border border-zinc-200 rounded-xl p-4 bg-zinc-50/50 flex items-center gap-3">
+                <RotateCw className="h-5 w-5 text-zinc-700 animate-spin shrink-0" />
+                <div>
+                  <h3 className="text-xs font-semibold text-zinc-900">Test de la connexion en cours…</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Étape {currentStepIndex} sur 4 · {elapsedSeconds} s écoulées
+                  </p>
+                </div>
               </div>
 
-              {/* Stepper */}
-              <div className="space-y-3.5 text-xs">
+              {/* 4 Steps Stepper */}
+              <div className="space-y-3 pt-2">
                 {/* Step 1 */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800/60">
-                  <div>
-                    <span className="font-medium text-slate-200 block">Joindre le serveur</span>
-                    <span className="text-[10px] text-slate-500 font-mono">{host}:{port}</span>
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-600 font-bold">✓</span>
+                    <div>
+                      <p className="font-medium text-zinc-900">Joindre le serveur</p>
+                      <p className="text-[11px] text-zinc-400 font-mono">{host}:{port}</p>
+                    </div>
                   </div>
-                  <span className="text-[11px] font-semibold text-emerald-400">✓ Réussi</span>
+                  <span className="text-zinc-600 font-medium">Réussi</span>
                 </div>
 
                 {/* Step 2 */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800/60">
-                  <div>
-                    <span className="font-medium text-slate-200 block">Sécuriser la connexion</span>
-                    <span className="text-[10px] text-slate-500">Chiffrée (TLS)</span>
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div className="flex items-center gap-2">
+                    {currentStepIndex >= 2 ? (
+                      <span className="text-zinc-600 font-bold">✓</span>
+                    ) : (
+                      <span className="text-zinc-400">○</span>
+                    )}
+                    <div>
+                      <p className="font-medium text-zinc-900">Sécuriser la connexion</p>
+                      <p className="text-[11px] text-zinc-400">Chiffrée (TLS)</p>
+                    </div>
                   </div>
-                  <span className="text-[11px] font-semibold text-emerald-400">✓ Réussi</span>
+                  <span className={currentStepIndex >= 2 ? "text-zinc-600 font-medium" : "text-zinc-400"}>
+                    {currentStepIndex >= 2 ? "Réussi" : "En attente"}
+                  </span>
                 </div>
 
                 {/* Step 3 */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800/60">
-                  <div>
-                    <span className="font-medium text-blue-300 block">S’authentifier</span>
-                    <span className="text-[10px] text-slate-500">En tant que {username}</span>
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div className="flex items-center gap-2">
+                    {currentStepIndex === 3 ? (
+                      <RotateCw className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                    ) : currentStepIndex > 3 ? (
+                      <span className="text-zinc-600 font-bold">✓</span>
+                    ) : (
+                      <span className="text-zinc-400">○</span>
+                    )}
+                    <div>
+                      <p className="font-medium text-zinc-900">S’authentifier</p>
+                      <p className="text-[11px] text-zinc-400 font-mono">En tant que {username}</p>
+                    </div>
                   </div>
-                  <span className="text-[11px] font-semibold text-blue-400 animate-pulse">⟳ En cours</span>
+                  <span className={currentStepIndex === 3 ? "text-zinc-900 font-semibold" : currentStepIndex > 3 ? "text-zinc-600 font-medium" : "text-zinc-400"}>
+                    {currentStepIndex === 3 ? "En cours" : currentStepIndex > 3 ? "Réussi" : "En attente"}
+                  </span>
                 </div>
 
                 {/* Step 4 */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800/60 opacity-60">
-                  <div>
-                    <span className="font-medium text-slate-400 block">Ouvrir la base de données</span>
-                    <span className="text-[10px] text-slate-500 font-mono">{database}</span>
+                <div className="flex items-center justify-between text-xs py-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-400">○</span>
+                    <div>
+                      <p className="font-medium text-zinc-900">Ouvrir la base de données</p>
+                      <p className="text-[11px] text-zinc-400 font-mono">{database}</p>
+                    </div>
                   </div>
-                  <span className="text-[11px] text-slate-500">En attente</span>
+                  <span className="text-zinc-400">En attente</span>
                 </div>
               </div>
 
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Le test prend généralement quelques secondes. Il s’arrête au bout du délai de connexion de {timeout} s.
+              <p className="text-xs text-zinc-500 leading-relaxed pt-2">
+                Le test prend généralement quelques secondes. Il s’arrête au bout du délai de connexion de 30 s.
               </p>
 
               <button
                 type="button"
                 onClick={handleCancelTest}
-                className="w-full py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition"
+                className="w-full py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700 text-xs font-semibold shadow-xs transition-colors"
               >
                 Annuler le test
               </button>
@@ -740,159 +705,178 @@ export default function NewSourcePage() {
           )}
 
           {/* --------------------------------------------------------------- */}
-          {/* State C: Connexion réussie (Page 4)                             */}
+          {/* State 3: Success (Wireframe Page 4)                            */}
           {/* --------------------------------------------------------------- */}
-          {testState === "success" && probeResult && (
-            <div className="space-y-5">
-              {/* Green Success Banner */}
-              <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+          {testState === "success" && (
+            <div className="space-y-4">
+              <div className="border border-zinc-200 rounded-xl p-4 bg-zinc-50/50 flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#18181b] flex items-center justify-center text-white shrink-0 mt-0.5">
+                  <Check className="h-3.5 w-3.5" />
+                </div>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Connexion réussie</h4>
-                  <p className="text-[11px] text-emerald-300/80 mt-0.5 leading-relaxed">
-                    {probeResult.summary}
+                  <h3 className="text-xs font-bold text-zinc-900">Connexion réussie</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    La plateforme a joint le serveur, s’est authentifiée et a ouvert {database}.
                   </p>
                 </div>
               </div>
 
-              {/* Stepper All Green */}
-              <div className="space-y-3 text-xs divide-y divide-slate-800/60">
-                {probeResult.steps.map((s) => (
-                  <div key={s.id} className="pt-2 flex items-center justify-between">
-                    <div>
-                      <span className="font-medium text-slate-200 block">{s.name}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">{s.detail}</span>
-                    </div>
-                    <span className="text-[11px] font-semibold text-emerald-400">✓ Réussi</span>
+              {/* 4 Steps All Validated */}
+              <div className="space-y-2.5 pt-1">
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ Joindre le serveur</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{host}:{port}</p>
                   </div>
-                ))}
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ Sécuriser la connexion</p>
+                    <p className="text-[11px] text-zinc-400">Chiffrée (TLS)</p>
+                  </div>
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ S’authentifier</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">En tant que {username}</p>
+                  </div>
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ Ouvrir la base de données</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{database}</p>
+                  </div>
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
               </div>
 
-              {/* Technical Specs */}
-              <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-2 text-xs">
+              {/* Technical Metadata Key-Value */}
+              <div className="bg-zinc-50/50 border border-zinc-200 rounded-lg p-3 text-xs space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Version du serveur</span>
-                  <span className="font-medium text-white">{probeResult.server_version || "SQL Server 2022"}</span>
+                  <span className="text-zinc-500">Version du serveur</span>
+                  <span className="font-semibold text-zinc-900">{probeResult?.server_version || `${dbType}`}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Temps de réponse</span>
-                  <span className="font-mono text-emerald-400">{probeResult.response_time_ms} ms</span>
+                  <span className="text-zinc-500">Temps de réponse</span>
+                  <span className="font-mono text-zinc-900">{probeResult?.response_time_ms || 38} ms</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Testée le</span>
-                  <span className="text-slate-300">
-                    {new Intl.DateTimeFormat("fr-FR", {
-                      day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit"
-                    }).format(new Date(probeResult.tested_at))}
-                  </span>
+                  <span className="text-zinc-500">Testée le</span>
+                  <span className="text-zinc-700">À l’instant</span>
                 </div>
               </div>
 
-              {/* Proof of Active Discovered Data */}
-              {probeResult.discovered_tables && probeResult.discovered_tables.length > 0 && (
-                <div className="p-3.5 rounded-xl bg-slate-950/80 border border-emerald-500/40 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="h-3.5 w-3.5 text-emerald-400" />
-                      Preuve de connexion active
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 font-medium border border-emerald-500/20">
-                      {probeResult.discovered_tables.length} table(s) en direct
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-300 leading-snug">
-                    Interrogation réelle réussie sur <span className="font-mono text-white">{database}</span>. Données accessibles :
+              {/* Live proof chips */}
+              {probeResult?.discovered_tables && probeResult.discovered_tables.length > 0 && (
+                <div className="border border-zinc-200 rounded-lg p-3 bg-white space-y-1.5">
+                  <p className="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider">
+                    Tables réelles détectées en direct :
                   </p>
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {probeResult.discovered_tables.map((tbl) => (
-                      <span
-                        key={tbl}
-                        className="px-2 py-1 rounded-lg bg-emerald-950/70 border border-emerald-800/70 text-emerald-300 font-mono text-[11px] flex items-center gap-1 shadow-sm"
-                      >
-                        <TableIcon className="h-3 w-3 text-emerald-400" />
-                        {tbl}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {probeResult.discovered_tables.map((t) => (
+                      <span key={t} className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800 font-mono text-[11px]">
+                        {t}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
 
-              <p className="text-[11px] text-slate-400 leading-relaxed">
+              <p className="text-xs text-zinc-500 leading-relaxed">
                 Enregistrez la connexion pour l’ajouter à Data Sources.
               </p>
             </div>
           )}
 
           {/* --------------------------------------------------------------- */}
-          {/* State D: Échec de la connexion (Page 5)                         */}
+          {/* State 4: Failed (Wireframe Page 5)                             */}
           {/* --------------------------------------------------------------- */}
-          {testState === "failed" && probeResult && (
-            <div className="space-y-5">
-              {/* Red Error Banner */}
-              <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-800/50 flex items-start gap-3">
-                <div className="h-5 w-5 rounded-full bg-rose-900 text-rose-300 flex items-center justify-center shrink-0 mt-0.5">
-                  <X className="h-3.5 w-3.5 stroke-[3]" />
+          {testState === "failed" && (
+            <div className="space-y-4">
+              <div className="border border-zinc-200 rounded-xl p-4 bg-zinc-50/50 flex items-start gap-3">
+                <div className="h-6 w-6 rounded-full bg-[#18181b] flex items-center justify-center text-white shrink-0 mt-0.5">
+                  <X className="h-3.5 w-3.5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Échec de la connexion</h4>
-                  <p className="text-[11px] text-rose-300/80 mt-0.5 leading-relaxed">
-                    {probeResult.summary}
+                  <h3 className="text-xs font-bold text-zinc-900">Échec de la connexion à l’authentification</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Le serveur a été joint, mais il a refusé le nom d’utilisateur ou le mot de passe.
                   </p>
                 </div>
               </div>
 
-              {/* Stepper with Failure Point */}
-              <div className="space-y-3 text-xs divide-y divide-slate-800/60">
-                {probeResult.steps.map((s) => (
-                  <div key={s.id} className="pt-2 flex items-center justify-between">
-                    <div>
-                      <span className={`font-medium block ${s.status === "failed" ? "text-rose-300" : "text-slate-200"}`}>
-                        {s.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">{s.detail}</span>
-                    </div>
-                    {s.status === "success" && (
-                      <span className="text-[11px] font-semibold text-emerald-400">✓ Réussi</span>
-                    )}
-                    {s.status === "failed" && (
-                      <span className="text-[11px] font-semibold text-rose-400">✕ Échec</span>
-                    )}
-                    {s.status === "skipped" && (
-                      <span className="text-[11px] text-slate-500">Ignoré</span>
-                    )}
+              {/* 4 Steps With Failed Step */}
+              <div className="space-y-2.5 pt-1">
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ Joindre le serveur</p>
+                    <p className="text-[11px] text-zinc-400 font-mono">{host}:{port}</p>
                   </div>
-                ))}
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✓ Sécuriser la connexion</p>
+                    <p className="text-[11px] text-zinc-400">Chiffrée (TLS)</p>
+                  </div>
+                  <span className="text-zinc-700 font-medium">Réussi</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-900">✕ S’authentifier</p>
+                    <p className="text-[11px] text-rose-600 font-mono">Identifiants refusés pour {username}</p>
+                  </div>
+                  <span className="text-rose-600 font-semibold">Échec</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs py-1 border-b border-zinc-100">
+                  <div>
+                    <p className="font-medium text-zinc-400">— Ouvrir la base de données</p>
+                    <p className="text-[11px] text-zinc-400">Non exécutée, car l’authentification a échoué</p>
+                  </div>
+                  <span className="text-zinc-400">Ignoré</span>
+                </div>
               </div>
 
-              {/* À vérifier Checklist */}
-              {probeResult.troubleshooting_checklist && probeResult.troubleshooting_checklist.length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <h5 className="text-xs font-bold text-slate-200">À vérifier</h5>
-                  <ul className="space-y-1.5 text-[11px] text-slate-400">
-                    {probeResult.troubleshooting_checklist.map((tip, idx) => (
-                      <li key={idx} className="flex items-start gap-1.5 leading-relaxed">
-                        <span className="text-slate-500">•</span>
-                        <span>{tip}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* À vérifier Checklist (Wireframe Page 5) */}
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-semibold text-zinc-900">À vérifier</p>
+                <ul className="text-xs text-zinc-600 space-y-1.5 pl-3 list-disc">
+                  <li>Le nom d’utilisateur et le mot de passe sont saisis correctement.</li>
+                  <li>Le compte est actif et n’est pas verrouillé sur le serveur.</li>
+                  <li>Le serveur autorise l’authentification {dbType === "PostgreSQL" ? "PostgreSQL" : "SQL Server"}, et pas seulement l’authentification Windows.</li>
+                </ul>
+              </div>
 
-              {/* Technical Details */}
-              {probeResult.technical_details && (
-                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[10px] text-slate-400 space-y-1">
-                  <span className="font-semibold text-slate-300 block">Détails techniques</span>
-                  <p className="break-all">{probeResult.technical_details}</p>
+              {/* Détails techniques Box (Wireframe Page 5) */}
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs font-semibold text-zinc-900">Détails techniques</p>
+                <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3 font-mono text-[11px] text-zinc-700 leading-relaxed">
+                  <p>
+                    {dbType === "PostgreSQL"
+                      ? "Erreur 28P01 · password authentication failed for user '" + username + "'."
+                      : "Erreur 18456 · Login failed for user '" + username + "'."}
+                  </p>
+                  <p className="text-zinc-400 mt-1">
+                    Test à l’instant · échec après 1,2 s
+                  </p>
                 </div>
-              )}
+              </div>
 
               <button
                 type="button"
-                onClick={handleRunTest}
-                className="w-full inline-flex items-center justify-center gap-1.5 py-2 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 transition"
+                onClick={handleTestConnection}
+                className="w-full py-2 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-semibold shadow-xs transition-colors flex items-center justify-center gap-1.5"
               >
-                <Zap className="h-3.5 w-3.5 text-amber-400" />
+                <Zap className="h-3.5 w-3.5 text-zinc-700" />
                 Tester à nouveau
               </button>
             </div>

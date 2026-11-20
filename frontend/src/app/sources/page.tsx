@@ -10,12 +10,10 @@ import {
   Check, 
   X, 
   RotateCw, 
-  ArrowRight, 
-  Server, 
-  Layers, 
+  SlidersHorizontal,
   Table as TableIcon,
-  ShieldAlert,
-  HelpCircle
+  HelpCircle,
+  ExternalLink
 } from "lucide-react";
 import { fetchSources, testSource, fetchTables, fetchTableSchema, DataSourceItem } from "@/lib/api";
 
@@ -28,7 +26,7 @@ export default function DataSourcesPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>("all");
   const [testingId, setTestingId] = useState<string | null>(null);
 
-  // Quick Explorer Modal / Drawer state
+  // Quick Explorer Drawer State
   const [activeExplorerSource, setActiveExplorerSource] = useState<DataSourceItem | null>(null);
   const [tables, setTables] = useState<string[]>([]);
   const [loadingTables, setLoadingTables] = useState(false);
@@ -99,12 +97,10 @@ export default function DataSourcesPage() {
   const untestedCount = sources.filter((s) => s.status === "untested").length;
 
   const filteredSources = sources.filter((s) => {
-    // Tab filter
     if (activeTab === "connected" && s.status !== "connected") return false;
     if (activeTab === "failed" && s.status !== "failed") return false;
     if (activeTab === "untested" && s.status !== "untested") return false;
 
-    // Search query filter (matches name, host, database)
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -130,23 +126,25 @@ export default function DataSourcesPage() {
     }
   };
 
+  const isSearchEmpty = Boolean(searchQuery.trim() && filteredSources.length === 0);
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="space-y-6">
       {/* ------------------------------------------------------------------- */}
       {/* Header Section (Wireframe Page 1)                                   */}
       {/* ------------------------------------------------------------------- */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">
             Data Sources
           </h1>
-          <p className="text-sm text-slate-400 mt-1">
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl leading-normal">
             Connectez des bases de données externes pour explorer leurs schémas et leurs tables, puis les extraire vers le stockage.
           </p>
         </div>
         <Link
           href="/sources/new"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-semibold text-sm shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#18181b] hover:bg-zinc-800 text-white font-medium text-sm shadow-xs transition-colors shrink-0"
         >
           <Plus className="h-4 w-4" />
           Ajouter une source
@@ -157,19 +155,19 @@ export default function DataSourcesPage() {
       {/* Zero Sources Empty State (Wireframe Page 6)                         */}
       {/* ------------------------------------------------------------------- */}
       {!loading && totalCount === 0 ? (
-        <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-16 text-center max-w-3xl mx-auto my-12 shadow-xl">
-          <div className="h-16 w-16 mx-auto rounded-2xl bg-blue-600/10 border border-blue-500/20 text-blue-400 flex items-center justify-center mb-5">
+        <div className="bg-white border border-zinc-200 rounded-xl p-16 text-center max-w-2xl mx-auto my-12 shadow-xs">
+          <div className="h-16 w-16 mx-auto rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600 mb-4">
             <Database className="h-8 w-8" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">
+          <h2 className="text-lg font-bold text-zinc-900 mb-2">
             Aucune source de données pour l’instant
           </h2>
-          <p className="text-sm text-slate-400 max-w-md mx-auto mb-6 leading-relaxed">
+          <p className="text-sm text-zinc-500 max-w-md mx-auto mb-6 leading-relaxed">
             Connectez votre première base SQL Server pour explorer ses tables et lancer des extractions. Préparez l’hôte, le port, le nom de la base et un compte en lecture.
           </p>
           <Link
             href="/sources/new"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-100 hover:bg-white text-slate-900 font-semibold text-sm shadow-md transition-all"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#18181b] hover:bg-zinc-800 text-white font-medium text-sm shadow-xs transition-colors"
           >
             <Plus className="h-4 w-4" />
             Ajouter une source
@@ -182,99 +180,87 @@ export default function DataSourcesPage() {
           {/* --------------------------------------------------------------- */}
           <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
             {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
               <input
                 type="text"
                 placeholder="Rechercher par nom, hôte ou base"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500/60 transition"
+                className="w-full pl-10 pr-8 py-2 bg-white border border-zinc-200 rounded-lg text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-zinc-400 transition"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs"
                 >
                   ✕
                 </button>
               )}
             </div>
 
-            {/* Filter Segmented Buttons */}
-            <div className="inline-flex rounded-xl bg-slate-900/90 p-1 border border-slate-800 shadow-inner">
+            {/* Filter Tabs (Pills) */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
               <button
                 onClick={() => setActiveTab("all")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors whitespace-nowrap ${
                   activeTab === "all"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-white border-zinc-900 text-zinc-900 font-semibold shadow-xs"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
               >
-                <span>Toutes</span>
-                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-slate-700/60 text-slate-300">
-                  {totalCount}
-                </span>
+                Toutes <span className="ml-1 text-zinc-500">{isSearchEmpty ? 0 : totalCount}</span>
               </button>
               <button
                 onClick={() => setActiveTab("connected")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors whitespace-nowrap ${
                   activeTab === "connected"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-white border-zinc-900 text-zinc-900 font-semibold shadow-xs"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
               >
-                <span>Connectées</span>
-                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-emerald-950/80 text-emerald-400 border border-emerald-800/40">
-                  {connectedCount}
-                </span>
+                Connectées <span className="ml-1 text-zinc-500">{isSearchEmpty ? 0 : connectedCount}</span>
               </button>
               <button
                 onClick={() => setActiveTab("failed")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors whitespace-nowrap ${
                   activeTab === "failed"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-white border-zinc-900 text-zinc-900 font-semibold shadow-xs"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
               >
-                <span>En échec</span>
-                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-rose-950/80 text-rose-400 border border-rose-800/40">
-                  {failedCount}
-                </span>
+                En échec <span className="ml-1 text-zinc-500">{isSearchEmpty ? 0 : failedCount}</span>
               </button>
               <button
                 onClick={() => setActiveTab("untested")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-sm border font-medium transition-colors whitespace-nowrap ${
                   activeTab === "untested"
-                    ? "bg-slate-800 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? "bg-white border-zinc-900 text-zinc-900 font-semibold shadow-xs"
+                    : "bg-white border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
               >
-                <span>Non testées</span>
-                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-400">
-                  {untestedCount}
-                </span>
+                Non testées <span className="ml-1 text-zinc-500">{isSearchEmpty ? 0 : untestedCount}</span>
               </button>
             </div>
           </div>
 
           {/* --------------------------------------------------------------- */}
-          {/* Zero Search Results State (Wireframe Page 7)                    */}
+          {/* Empty Search Result State (Wireframe Page 7)                    */}
           {/* --------------------------------------------------------------- */}
-          {!loading && filteredSources.length === 0 ? (
-            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-12 text-center my-6">
-              <div className="h-12 w-12 mx-auto rounded-full bg-slate-800/80 text-slate-400 flex items-center justify-center mb-4">
-                <Search className="h-6 w-6" />
+          {isSearchEmpty ? (
+            <div className="bg-white border border-zinc-200 rounded-xl p-16 text-center max-w-2xl mx-auto my-8 shadow-xs">
+              <div className="h-16 w-16 mx-auto rounded-full bg-zinc-100 flex items-center justify-center text-zinc-600 mb-4">
+                <Search className="h-8 w-8" />
               </div>
-              <h3 className="text-base font-bold text-white mb-1">
+              <h2 className="text-lg font-bold text-zinc-900 mb-2">
                 Aucune source ne correspond à « {searchQuery} »
-              </h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto mb-5">
+              </h2>
+              <p className="text-sm text-zinc-500 max-w-md mx-auto mb-6 leading-relaxed">
                 Vérifiez l’orthographe ou effacez la recherche. La recherche porte sur le nom de la connexion, l’hôte et la base de données.
               </p>
               <button
                 onClick={() => setSearchQuery("")}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-800 font-medium text-sm transition-colors"
               >
                 Effacer la recherche
               </button>
@@ -283,130 +269,135 @@ export default function DataSourcesPage() {
             /* ------------------------------------------------------------- */
             /* Data Sources Table (Wireframe Page 1)                         */
             /* ------------------------------------------------------------- */
-            <div className="border border-slate-800 rounded-2xl bg-slate-900/60 shadow-xl overflow-hidden">
+            <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden shadow-xs">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="text-xs uppercase bg-slate-950/80 text-slate-400 border-b border-slate-800 tracking-wider">
-                    <tr>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Type</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Nom de la connexion</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Hôte / Serveur</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Base de données</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Statut</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold">Dernier test</th>
-                      <th scope="col" className="px-6 py-3.5 font-semibold text-right">Actions</th>
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-200 bg-zinc-50/50 text-xs font-medium text-zinc-500">
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4">Nom de la connexion</th>
+                      <th className="py-3 px-4">Hôte / Serveur</th>
+                      <th className="py-3 px-4">Base de données</th>
+                      <th className="py-3 px-4">Statut</th>
+                      <th className="py-3 px-4">Dernier test</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {filteredSources.map((source) => {
-                      const isTesting = testingId === source.id;
-                      return (
-                        <tr
-                          key={source.id}
-                          className="hover:bg-slate-800/40 transition-colors group"
-                        >
+                  <tbody className="divide-y divide-zinc-200 text-zinc-700">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-zinc-400">
+                          <RotateCw className="h-5 w-5 animate-spin mx-auto mb-2" />
+                          Chargement des sources...
+                        </td>
+                      </tr>
+                    ) : filteredSources.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-zinc-400">
+                          Aucune source trouvée dans cette catégorie.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSources.map((source) => (
+                        <tr key={source.id} className="hover:bg-zinc-50/80 transition-colors">
                           {/* Type */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <Database className="h-4 w-4 text-blue-400 shrink-0" />
-                              <span className="font-medium text-slate-200">
-                                {source.type || "SQL Server"}
-                              </span>
+                          <td className="py-3.5 px-4 font-normal whitespace-nowrap">
+                            <div className="flex items-center gap-2 text-zinc-600">
+                              <Database className="h-4 w-4 text-zinc-400" />
+                              <span>{source.type || "SQL Server"}</span>
                             </div>
                           </td>
 
                           {/* Nom de la connexion */}
-                          <td className="px-6 py-4 whitespace-nowrap font-bold text-white">
+                          <td className="py-3.5 px-4 font-bold text-zinc-900 whitespace-nowrap">
                             {source.name}
                           </td>
 
                           {/* Hôte / Serveur */}
-                          <td className="px-6 py-4 whitespace-nowrap font-mono text-xs text-slate-400">
+                          <td className="py-3.5 px-4 font-mono text-xs text-zinc-600 whitespace-nowrap">
                             {source.host}
                           </td>
 
                           {/* Base de données */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700/60 font-mono text-xs text-slate-300">
-                              {source.database}
-                            </span>
+                          <td className="py-3.5 px-4 text-zinc-700 whitespace-nowrap">
+                            {source.database}
                           </td>
 
-                          {/* Statut Badge */}
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {isTesting ? (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-950/60 text-blue-400 border border-blue-800/50">
-                                <RotateCw className="h-3 w-3 animate-spin text-blue-400" />
-                                Test en cours…
+                          {/* Statut */}
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {testingId === source.id ? (
+                              <div className="flex items-center gap-1.5 text-zinc-800 text-xs">
+                                <RotateCw className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                                <span>Test en cours</span>
                               </div>
                             ) : source.status === "connected" ? (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-950/50 text-emerald-400 border border-emerald-800/40">
-                                <Check className="h-3 w-3 text-emerald-400 stroke-[3]" />
-                                Connectée
+                              <div className="flex items-center gap-1.5 text-zinc-900 text-sm font-medium">
+                                <span className="text-zinc-600">✓</span>
+                                <span>Connectée</span>
                               </div>
                             ) : source.status === "failed" ? (
-                              <div className="flex flex-col">
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-950/60 text-rose-300 border border-rose-800/40 w-fit">
-                                  <X className="h-3 w-3 text-rose-400 stroke-[3]" />
-                                  Échec
+                              <div>
+                                <div className="flex items-center gap-1.5 text-zinc-900 text-sm font-medium">
+                                  <span className="text-zinc-600">✕</span>
+                                  <span>Échec</span>
                                 </div>
-                                {source.status_hint && (
-                                  <span className="text-[11px] text-rose-400/80 mt-1 pl-1 leading-tight max-w-[200px] truncate" title={source.status_hint}>
-                                    {source.status_hint}
-                                  </span>
-                                )}
+                                <div className="text-[11px] text-zinc-500 mt-0.5">
+                                  {source.status_hint || "Identifiants refusés par le serveur"}
+                                </div>
                               </div>
                             ) : (
-                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-800/80 text-slate-400 border border-slate-700/40">
+                              <div className="flex items-center gap-1.5 text-zinc-500 text-sm">
                                 <span>—</span>
-                                Non testée
+                                <span>Non testée</span>
                               </div>
                             )}
                           </td>
 
                           {/* Dernier test */}
-                          <td className="px-6 py-4 whitespace-nowrap text-xs text-slate-400">
+                          <td className="py-3.5 px-4 text-zinc-600 text-xs whitespace-nowrap">
                             {formatDate(source.last_tested)}
                           </td>
 
                           {/* Actions */}
-                          <td className="px-6 py-4 whitespace-nowrap text-right">
-                            <div className="inline-flex items-center gap-2 justify-end">
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 onClick={() => handleTestSource(source)}
-                                disabled={isTesting}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 transition disabled:opacity-50"
+                                disabled={testingId === source.id}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-medium transition-colors"
                               >
-                                {isTesting ? (
+                                {testingId === source.id ? (
                                   <>
-                                    <RotateCw className="h-3.5 w-3.5 animate-spin" />
-                                    Test…
+                                    <RotateCw className="h-3 w-3 animate-spin text-zinc-600" />
+                                    <span>Test…</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Zap className="h-3.5 w-3.5 text-amber-400" />
-                                    Tester
+                                    <Zap className="h-3 w-3 text-zinc-700" />
+                                    <span>Tester</span>
                                   </>
                                 )}
                               </button>
                               <button
                                 onClick={() => handleOpenExplorer(source)}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 transition"
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-800 text-xs font-medium transition-colors"
                               >
                                 Explorer
                               </button>
                             </div>
                           </td>
                         </tr>
-                      );
-                    })}
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Table Footer */}
-              <div className="px-6 py-3.5 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 bg-slate-950/40">
-                <span>{filteredSources.length} sources sur {totalCount} affichées</span>
+              {/* Table Footer (Wireframe Page 1) */}
+              <div className="border-t border-zinc-200 bg-zinc-50/50 px-4 py-3 flex items-center justify-between text-xs text-zinc-500">
+                <span>
+                  {isSearchEmpty ? 0 : filteredSources.length} source{filteredSources.length > 1 ? "s" : ""} sur {totalCount} affichée{filteredSources.length > 1 ? "s" : ""}
+                </span>
                 <span>Les statuts reflètent le dernier test</span>
               </div>
             </div>
@@ -415,124 +406,118 @@ export default function DataSourcesPage() {
       )}
 
       {/* ------------------------------------------------------------------- */}
-      {/* Source Explorer Modal / Drawer                                      */}
+      {/* Table Explorer Side Drawer                                          */}
       {/* ------------------------------------------------------------------- */}
       {activeExplorerSource && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
-                  <Database className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-white flex items-center gap-2">
-                    {activeExplorerSource.name}
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                      {activeExplorerSource.database}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-400">{activeExplorerSource.host}</p>
-                </div>
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/30 backdrop-blur-xs flex justify-end">
+          <div className="w-full max-w-xl bg-white h-full shadow-2xl border-l border-zinc-200 flex flex-col">
+            {/* Drawer Header */}
+            <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/50">
+              <div>
+                <h3 className="font-bold text-zinc-900 flex items-center gap-2">
+                  <Database className="h-4 w-4 text-zinc-600" />
+                  {activeExplorerSource.name}
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5 font-mono">
+                  {activeExplorerSource.host} · {activeExplorerSource.database}
+                </p>
               </div>
               <button
                 onClick={() => setActiveExplorerSource(null)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                className="p-1 rounded-lg hover:bg-zinc-200 text-zinc-500 hover:text-zinc-900 transition-colors"
               >
                 ✕
               </button>
             </div>
 
+            {/* Drawer Content */}
             <div className="flex-1 flex overflow-hidden">
-              {/* Tables sidebar */}
-              <div className="w-64 border-r border-slate-800 bg-slate-950/40 p-3 overflow-y-auto">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block px-2 mb-2">
-                  Tables ({tables.length})
-                </span>
+              {/* Tables List */}
+              <div className="w-52 border-r border-zinc-200 bg-zinc-50/30 overflow-y-auto p-3 space-y-1">
+                <p className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider px-2 py-1">
+                  Tables Découvertes ({tables.length})
+                </p>
                 {loadingTables ? (
-                  <div className="p-4 text-center text-xs text-slate-400">Chargement…</div>
-                ) : tables.length === 0 ? (
-                  <div className="p-4 text-center text-xs text-slate-500">Aucune table trouvée</div>
-                ) : (
-                  <div className="space-y-1">
-                    {tables.map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => handleSelectTable(activeExplorerSource.id, t)}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-mono transition flex items-center justify-between ${
-                          selectedTable === t
-                            ? "bg-blue-600/20 text-blue-300 border border-blue-500/30 font-medium"
-                            : "text-slate-300 hover:bg-slate-800/60"
-                        }`}
-                      >
-                        <span className="truncate">{t}</span>
-                        {selectedTable === t && <ArrowRight className="h-3 w-3 shrink-0" />}
-                      </button>
-                    ))}
+                  <div className="py-6 text-center text-xs text-zinc-400">
+                    <RotateCw className="h-4 w-4 animate-spin mx-auto mb-1" />
+                    Chargement...
                   </div>
+                ) : tables.length === 0 ? (
+                  <p className="text-xs text-zinc-400 px-2 py-2">Aucune table visible</p>
+                ) : (
+                  tables.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => handleSelectTable(activeExplorerSource.id, t)}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-mono transition-colors flex items-center gap-2 ${
+                        selectedTable === t
+                          ? "bg-zinc-900 text-white font-semibold"
+                          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                      }`}
+                    >
+                      <TableIcon className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{t}</span>
+                    </button>
+                  ))
                 )}
               </div>
 
-              {/* Schema Viewer */}
-              <div className="flex-1 p-5 overflow-y-auto">
+              {/* Table Schema Viewer */}
+              <div className="flex-1 p-6 overflow-y-auto">
                 {selectedTable ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-zinc-200 mb-4">
                       <div>
-                        <span className="text-xs text-slate-400">Table sélectionnée :</span>
-                        <h4 className="text-base font-bold text-white font-mono">{selectedTable}</h4>
+                        <h4 className="font-bold text-zinc-900 font-mono text-sm">{selectedTable}</h4>
+                        <p className="text-xs text-zinc-500 mt-0.5">
+                          {schemaInfo?.columns?.length || 0} colonnes · {schemaInfo?.estimated_row_count?.toLocaleString() || "N/A"} lignes
+                        </p>
                       </div>
                       <Link
-                        href={`/jobs?source=${activeExplorerSource.id}&table=${selectedTable}`}
-                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition"
+                        href="/jobs"
+                        className="text-xs font-medium text-zinc-900 underline hover:text-zinc-600"
                       >
-                        Créer un Job d'ingestion
+                        Créer un job d’ingestion →
                       </Link>
                     </div>
 
                     {loadingSchema ? (
-                      <div className="p-8 text-center text-xs text-slate-400">Chargement du schéma…</div>
-                    ) : schemaInfo && schemaInfo.columns ? (
-                      <div className="border border-slate-800 rounded-xl overflow-hidden">
+                      <div className="py-12 text-center text-xs text-zinc-400">
+                        <RotateCw className="h-4 w-4 animate-spin mx-auto mb-2" />
+                        Chargement du schéma...
+                      </div>
+                    ) : schemaInfo?.columns ? (
+                      <div className="border border-zinc-200 rounded-lg overflow-hidden">
                         <table className="w-full text-left text-xs">
-                          <thead className="bg-slate-950 text-slate-400 font-semibold uppercase">
+                          <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
                             <tr>
-                              <th className="px-4 py-2.5">Colonne</th>
-                              <th className="px-4 py-2.5">Type SQL</th>
-                              <th className="px-4 py-2.5">Nullable</th>
-                              <th className="px-4 py-2.5">Clé</th>
+                              <th className="py-2 px-3">Colonne</th>
+                              <th className="py-2 px-3">Type</th>
+                              <th className="py-2 px-3">Clé</th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-800/60 font-mono text-slate-300">
-                            {schemaInfo.columns.map((c: any) => {
-                              const isPk = schemaInfo.primary_keys?.includes(c.column_name);
-                              return (
-                                <tr key={c.column_name} className="hover:bg-slate-800/40">
-                                  <td className="px-4 py-2 font-medium text-white">{c.column_name}</td>
-                                  <td className="px-4 py-2 text-blue-400">{c.data_type}</td>
-                                  <td className="px-4 py-2 text-slate-400">{c.is_nullable ? "OUI" : "NON"}</td>
-                                  <td className="px-4 py-2">
-                                    {isPk ? (
-                                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/60 text-amber-400 border border-amber-800/40">
-                                        PK
-                                      </span>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                          <tbody className="divide-y divide-zinc-200 font-mono text-[11px]">
+                            {schemaInfo.columns.map((col: any) => (
+                              <tr key={col.column_name} className="hover:bg-zinc-50">
+                                <td className="py-2 px-3 font-semibold text-zinc-800">{col.column_name}</td>
+                                <td className="py-2 px-3 text-zinc-500">{col.data_type}</td>
+                                <td className="py-2 px-3">
+                                  {col.is_primary_key ? (
+                                    <span className="px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-800 font-bold text-[10px]">PK</span>
+                                  ) : (
+                                    <span className="text-zinc-400">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
-                    ) : (
-                      <div className="text-xs text-slate-500">Schéma indisponible</div>
-                    )}
+                    ) : null}
                   </div>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-slate-500 text-xs">
-                    Sélectionnez une table à gauche pour inspecter ses colonnes
+                  <div className="text-center py-16 text-zinc-400 text-xs">
+                    Sélectionnez une table à gauche pour inspecter son schéma
                   </div>
                 )}
               </div>
