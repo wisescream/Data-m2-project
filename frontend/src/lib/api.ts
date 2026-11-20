@@ -12,9 +12,80 @@ export async function fetchStats() {
   return res.json();
 }
 
-export async function fetchSources() {
+export interface DataSourceItem {
+  id: string;
+  name: string;
+  type: string;
+  host: string;
+  port: number;
+  database: string;
+  status: "connected" | "failed" | "testing" | "untested";
+  status_hint?: string;
+  last_tested?: string;
+  server_version?: string;
+}
+
+export interface SourceProbeStep {
+  id: number;
+  name: string;
+  detail: string;
+  status: "success" | "failed" | "running" | "waiting" | "skipped";
+}
+
+export interface SourceProbeRequest {
+  connection_name: string;
+  type?: string;
+  host: string;
+  port?: number;
+  database: string;
+  auth_method?: string;
+  username: string;
+  password?: string;
+  encrypt?: boolean;
+  trust_server_certificate?: boolean;
+  connection_timeout?: number;
+}
+
+export interface SourceProbeResponse {
+  status: "success" | "failed";
+  summary: string;
+  server_version?: string;
+  response_time_ms: number;
+  tested_at: string;
+  steps: SourceProbeStep[];
+  technical_details?: string;
+  troubleshooting_checklist: string[];
+}
+
+export async function fetchSources(): Promise<DataSourceItem[]> {
   const res = await fetch(`${API_BASE_URL}/sources`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch sources");
+  return res.json();
+}
+
+export async function probeSourceConnection(data: SourceProbeRequest): Promise<SourceProbeResponse> {
+  const res = await fetch(`${API_BASE_URL}/sources/probe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to probe source connection");
+  }
+  return res.json();
+}
+
+export async function registerSource(data: SourceProbeRequest): Promise<DataSourceItem> {
+  const res = await fetch(`${API_BASE_URL}/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to register data source");
+  }
   return res.json();
 }
 
