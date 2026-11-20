@@ -51,11 +51,11 @@ flowchart TD
         end
     end
 
-    BACKEND -->|Keyset Pagination O(1)| SQLS
-    BACKEND -->|JDBC Probe & Discovery| PG_SRC
-    BACKEND -->|S3 SDK Staging ➔ Curated| MINIO
-    BACKEND -->|JDBC Dynamic Querying| TRINO
-    FRONTEND -->|REST / JSON| BACKEND
+    BACKEND -->|"Keyset Pagination O(1)"| SQLS
+    BACKEND -->|"JDBC Probe & Discovery"| PG_SRC
+    BACKEND -->|"S3 SDK Staging -> Curated"| MINIO
+    BACKEND -->|"JDBC Dynamic Querying"| TRINO
+    FRONTEND -->|"REST / JSON"| BACKEND
 ```
 
 ---

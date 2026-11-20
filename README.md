@@ -19,7 +19,7 @@ flowchart TD
 
     subgraph Control_Plane["Plan de Contrôle & Data Plane (Java 21)"]
         API["Spring Boot 3.3.5 Control Plane<br/>Endpoints REST : Sources, Probe 4-étapes, Jobs, Auth, Catalog"]
-        WORKER["Native Java Ingestion Engine<br/>Keyset Pagination O(1)<br/>PyArrow-Compatible Parquet<br/>Staging ➔ Promotion Atomique 3 phases"]
+        WORKER["Native Java Ingestion Engine<br/>Keyset Pagination O(1)<br/>Standard Apache Parquet<br/>Staging ➔ Promotion Atomique 3 phases"]
     end
 
     subgraph Storage_Tier["Couche Stockage & Catalogage"]
@@ -41,7 +41,7 @@ flowchart TD
     HIVE -->|Sync Partitions| MINIO
     TRINO -->|Catalog Metadata| HIVE
     TRINO -->|Vectorized Parquet Read| MINIO
-    UI -->|REST / JSON (Port 8000)| API
+    UI -->|"REST / JSON (Port 8000)"| API
 ```
 
 ### Principes Directeurs
