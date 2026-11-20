@@ -171,10 +171,18 @@ public class SourceExplorerService {
 
     public SourceProbeResponseDTO probeConnection(SourceProbeRequestDTO req) {
         long start = System.currentTimeMillis();
+        boolean isPostgres = (req.type() != null && req.type().toLowerCase().contains("postgres"))
+                || (req.authMethod() != null && req.authMethod().toLowerCase().contains("postgres"))
+                || (req.port() != null && (req.port() == 5432 || req.port() == 5434));
+
+        int defaultEnginePort = isPostgres ? 5432 : defaultPort;
+        String defaultEngineDb = isPostgres ? "retail_banking" : "finlake_source";
+        String defaultEngineUser = isPostgres ? "finlake_user" : defaultUser;
+
         String host = (req.host() != null && !req.host().isBlank()) ? req.host().trim() : defaultHost;
-        int port = (req.port() != null && req.port() > 0) ? req.port() : defaultPort;
-        String database = (req.database() != null && !req.database().isBlank()) ? req.database().trim() : "finlake_source";
-        String user = (req.username() != null) ? req.username().trim() : defaultUser;
+        int port = (req.port() != null && req.port() > 0) ? req.port() : defaultEnginePort;
+        String database = (req.database() != null && !req.database().isBlank()) ? req.database().trim() : defaultEngineDb;
+        String user = (req.username() != null) ? req.username().trim() : defaultEngineUser;
         String pass = (req.password() != null) ? req.password() : "";
         boolean encrypt = req.encrypt() != null ? req.encrypt() : true;
         boolean trustCert = req.trustServerCertificate() != null ? req.trustServerCertificate() : true;
@@ -216,10 +224,17 @@ public class SourceExplorerService {
         steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", encrypt ? "Chiffrée (TLS)" : "Standard", "success"));
 
         // Step 3 & 4: Authenticate and Open database
-        String jdbcUrl = String.format(
-                "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=%b;trustServerCertificate=%b;loginTimeout=%d",
-                host, port, database, encrypt, trustCert, timeoutSeconds
-        );
+        String jdbcUrl;
+        if (isPostgres) {
+            String sslParam = encrypt ? "sslmode=prefer" : "sslmode=disable";
+            jdbcUrl = String.format("jdbc:postgresql://%s:%d/%s?%s&loginTimeout=%d",
+                    host, port, database, sslParam, timeoutSeconds);
+        } else {
+            jdbcUrl = String.format(
+                    "jdbc:sqlserver://%s:%d;databaseName=%s;encrypt=%b;trustServerCertificate=%b;loginTimeout=%d",
+                    host, port, database, encrypt, trustCert, timeoutSeconds
+            );
+        }
 
         try (Connection conn = DriverManager.getConnection(jdbcUrl, user, pass);
              Statement stmt = conn.createStatement()) {
@@ -228,13 +243,17 @@ public class SourceExplorerService {
             steps.add(new SourceProbeStepDTO(3, "S'authentifier", "En tant que " + user, "success"));
 
             // Open database & fetch version
-            String serverVersion = "Microsoft SQL Server";
-            try (ResultSet rs = stmt.executeQuery("SELECT @@VERSION AS ver, DB_NAME() AS db")) {
+            String serverVersion = isPostgres ? "PostgreSQL" : "Microsoft SQL Server";
+            String versionQuery = isPostgres
+                    ? "SELECT version() AS ver, current_database() AS db"
+                    : "SELECT @@VERSION AS ver, DB_NAME() AS db";
+
+            try (ResultSet rs = stmt.executeQuery(versionQuery)) {
                 if (rs.next()) {
                     String rawVer = rs.getString("ver");
                     if (rawVer != null) {
                         serverVersion = rawVer.split("\n")[0].trim();
-                        if (serverVersion.length() > 60) serverVersion = serverVersion.substring(0, 60);
+                        if (serverVersion.length() > 65) serverVersion = serverVersion.substring(0, 65);
                     }
                 }
             }
@@ -256,11 +275,32 @@ public class SourceExplorerService {
         } catch (Exception ex) {
             long duration = System.currentTimeMillis() - start;
             String msg = ex.getMessage();
-            boolean isAuthFailure = msg != null && (msg.contains("Login failed") || msg.contains("18456") || msg.contains("authentification"));
+            boolean isAuthFailure = msg != null && (
+                    msg.contains("Login failed") ||
+                    msg.contains("18456") ||
+                    msg.contains("password authentication failed") ||
+                    msg.contains("28P01") ||
+                    msg.contains("authentification")
+            );
 
             if (isAuthFailure) {
                 steps.add(new SourceProbeStepDTO(3, "S'authentifier", "Identifiants refusés pour " + user, "failed"));
                 steps.add(new SourceProbeStepDTO(4, "Ouvrir la base de données", "Non exécutée, car l'authentification a échoué", "skipped"));
+
+                String errCode = isPostgres
+                        ? "Erreur 28P01 · Password authentication failed for user '" + user + "'"
+                        : "Erreur 18456 · Login failed for user '" + user + "'";
+                List<String> checklist = isPostgres
+                        ? List.of(
+                                "Le nom d'utilisateur et le mot de passe sont valides pour PostgreSQL.",
+                                "Le rôle PostgreSQL possède les privilèges de connexion.",
+                                "La méthode d'authentification dans pg_hba.conf autorise cet utilisateur."
+                        )
+                        : List.of(
+                                "Le nom d'utilisateur et le mot de passe sont saisis correctement.",
+                                "Le compte est actif et n'est pas verrouillé sur le serveur.",
+                                "Le serveur autorise l'authentification SQL Server, et pas seulement l'authentification Windows."
+                        );
 
                 return new SourceProbeResponseDTO(
                         "failed",
@@ -269,12 +309,8 @@ public class SourceExplorerService {
                         duration,
                         LocalDateTime.now(),
                         steps,
-                        "Erreur 18456 · Login failed for user '" + user + "'. Échec après " + String.format("%.1f", duration / 1000.0) + " s",
-                        List.of(
-                                "Le nom d'utilisateur et le mot de passe sont saisis correctement.",
-                                "Le compte est actif et n'est pas verrouillé sur le serveur.",
-                                "Le serveur autorise l'authentification SQL Server, et pas seulement l'authentification Windows."
-                        )
+                        errCode + ". Échec après " + String.format("%.1f", duration / 1000.0) + " s",
+                        checklist
                 );
             } else {
                 steps.add(new SourceProbeStepDTO(3, "S'authentifier", "En tant que " + user, "success"));
@@ -287,11 +323,11 @@ public class SourceExplorerService {
                         duration,
                         LocalDateTime.now(),
                         steps,
-                        "Erreur SQL : " + msg,
+                        "Erreur base de données : " + ex.getMessage(),
                         List.of(
-                                "La base de données '" + database + "' existe sur le serveur.",
-                                "L'utilisateur dispose des privilèges de lecture sur les schémas et tables.",
-                                "La base de données n'est pas en mode RESTRICTED_USER ou OFFLINE."
+                                "La base de données '" + database + "' existe bien sur l'instance.",
+                                "L'utilisateur '" + user + "' dispose du droit CONNECT / USE sur cette base.",
+                                "Le schéma par défaut est accessible."
                         )
                 );
             }
@@ -300,7 +336,12 @@ public class SourceExplorerService {
 
     public DataSourceItemDTO registerSource(SourceProbeRequestDTO req) {
         String id = req.connectionName().toLowerCase().trim().replace(" ", "-");
-        String hostWithPort = req.host().trim() + ":" + (req.port() != null ? req.port() : 1433);
+        boolean isPostgres = (req.type() != null && req.type().toLowerCase().contains("postgres"))
+                || (req.authMethod() != null && req.authMethod().toLowerCase().contains("postgres"))
+                || (req.port() != null && (req.port() == 5432 || req.port() == 5434));
+        int port = (req.port() != null && req.port() > 0) ? req.port() : (isPostgres ? 5432 : 1433);
+        String hostWithPort = req.host().trim() + ":" + port;
+        String typeDisplay = isPostgres ? "PostgreSQL" : "SQL Server";
 
         // Run live probe to determine initial status
         SourceProbeResponseDTO probe = probeConnection(req);
@@ -308,9 +349,9 @@ public class SourceExplorerService {
         DataSourceItemDTO item = new DataSourceItemDTO(
                 id,
                 req.connectionName().trim(),
-                "SQL Server",
+                typeDisplay,
                 hostWithPort,
-                req.port() != null ? req.port() : 1433,
+                port,
                 req.database().trim(),
                 probe.status().equals("success") ? "connected" : "failed",
                 probe.status().equals("success") ? null : probe.summary(),
@@ -320,7 +361,7 @@ public class SourceExplorerService {
 
         sourceRegistry.put(id, item);
         sourceConfigs.put(id, req);
-        log.info("Registered new data source: {} with status: {}", id, item.status());
+        log.info("Registered new data source: {} ({}) with status: {}", id, typeDisplay, item.status());
         return item;
     }
 

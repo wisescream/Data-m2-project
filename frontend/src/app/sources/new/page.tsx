@@ -44,6 +44,29 @@ export default function NewSourcePage() {
   const [trustCert, setTrustCert] = useState(true);
   const [timeout, setTimeoutSec] = useState(30);
 
+  const handleTypeChange = (newType: string) => {
+    setDbType(newType);
+    setTestState("untested");
+    setProbeResult(null);
+    if (newType === "PostgreSQL") {
+      setConnectionName("retail-pos-pg");
+      setHost("postgres-source");
+      setPort(5432);
+      setDatabase("retail_banking");
+      setAuthMethod("Authentification standard (mot de passe)");
+      setUsername("finlake_user");
+      setPassword("FinLake2026!StrongPass#");
+    } else {
+      setConnectionName("erp-production");
+      setHost("sqlserver");
+      setPort(1433);
+      setDatabase("finlake_source");
+      setAuthMethod("Authentification SQL Server");
+      setUsername("sa");
+      setPassword("FinLake2026!StrongPass#");
+    }
+  };
+
   // Interactive Test State
   const [testState, setTestState] = useState<TestState>("untested");
   const [probeResult, setProbeResult] = useState<SourceProbeResponse | null>(null);
@@ -73,11 +96,11 @@ export default function NewSourcePage() {
 
     const payload: SourceProbeRequest = {
       connection_name: connectionName,
-      type: "sqlserver",
+      type: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
       host: host,
       port: Number(port),
       database: database,
-      auth_method: "sqlserver",
+      auth_method: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
       username: username,
       password: password,
       encrypt: encrypt,
@@ -124,11 +147,11 @@ export default function NewSourcePage() {
     try {
       const payload: SourceProbeRequest = {
         connection_name: connectionName,
-        type: "sqlserver",
+        type: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
         host: host,
         port: Number(port),
         database: database,
-        auth_method: "sqlserver",
+        auth_method: dbType.toLowerCase().includes("postgres") ? "postgresql" : "sqlserver",
         username: username,
         password: password,
         encrypt: encrypt,
@@ -202,9 +225,19 @@ export default function NewSourcePage() {
                   <label className="block text-xs font-medium text-slate-300 mb-1.5">
                     Type de base de données
                   </label>
-                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200">
-                    <Database className="h-4 w-4 text-blue-400" />
-                    <span>{dbType}</span>
+                  <div className="relative">
+                    <select
+                      disabled={testState === "running"}
+                      value={dbType}
+                      onChange={(e) => handleTypeChange(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                    >
+                      <option value="Microsoft SQL Server">Microsoft SQL Server</option>
+                      <option value="PostgreSQL">PostgreSQL</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
+                      <ChevronRight className="h-3 w-3 rotate-90" />
+                    </div>
                   </div>
                 </div>
 

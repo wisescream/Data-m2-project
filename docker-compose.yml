@@ -23,6 +23,31 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
+  # 1b. Secondary Relational Source (PostgreSQL - Multi-Tenant / Business)
+  # -------------------------------------------------------------------------
+  postgres-source:
+    image: postgres:16-alpine
+    container_name: finlake-postgres-source
+    ports:
+      - "5434:5432"
+    environment:
+      - POSTGRES_USER=finlake_user
+      - POSTGRES_PASSWORD=FinLake2026!StrongPass#
+      - POSTGRES_DB=retail_banking
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finlake_user -d retail_banking"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - postgres-source-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
   # 2. S3-Compatible Object Storage (MinIO)
   # -------------------------------------------------------------------------
   minio:
@@ -210,3 +235,5 @@ volumes:
     name: finlake-minio-data
   metastore-db-data:
     name: finlake-metastore-db-data
+  postgres-source-data:
+    name: finlake-postgres-source-data
