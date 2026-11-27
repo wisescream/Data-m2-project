@@ -1,138 +1,125 @@
-# FinLake — Contexte du Projet & Décisions d'Architecture
+# FinLake — Contexte du Projet, Choix d'Architecture et Justifications de Conception
 
-**Version** : 1.0  
-**Date** : 2026-11-20  
-**Auteurs** : Équipe Architecture Data & Plateforme FinLake  
+**Version** : 2.0  
+**Date** : 2026-11-27  
+**Statut** : Référentiel Complet de Soutenance & Décisions Techniques  
 
 ---
 
 ## 1. Contexte Général et Objectifs du Projet
 
 ### 1.1 Contexte Métier
-Dans le secteur financier et des technologies de paiement (fintech, mobile-money, néobanques), les systèmes transactionnels traitent quotidiennement des dizaines de millions d'opérations critiques. Ces opérations sont réparties sur des environnements hautement hétérogènes :
-* Des **bases opérationnelles (OLTP)** qui garantissent les propriétés ACID des paiements en temps réel.
-* Des **systèmes NoSQL et temps réel** assurant la gestion des sessions utilisateurs, des paniers d'achat, du scoring de risque immédiat et des notifications.
-* Un **Data Lakehouse analytique (OLAP)** conçu pour consolider l'ensemble des données, exécuter des requêtes analytiques complexes (reporting réglementaire, audit anti-fraude, calculs de volumétrie financière) sans jamais dégrader les performances des bases de production.
+Dans le secteur financier et des technologies de paiement (fintech, mobile-money, néobanques), les systèmes transactionnels traitent quotidiennement des millions d'opérations réparties sur des environnements hétérogènes :
+* Des **bases opérationnelles relationnelles (OLTP)** qui garantissent l'intégrité ACID des règlements, factures et journaux de paiements.
+* Des **bases NoSQL et temps réel** (Documents BSON/JSON, Clé-Valeur en mémoire, Colonnes larges, Séries temporelles) qui gèrent les profils clients KYC, les sessions d'authentification et la télémétrie haute fréquence.
+* Un **Data Lakehouse analytique (OLAP)** conçu pour consolider ces données disparates dans un stockage objet économique (MinIO S3 + Apache Parquet + Apache Iceberg) et les interroger via un moteur SQL distribué (Trino), sans jamais surcharger les bases de production.
 
 ### 1.2 Problématique Centrale
-Comment concevoir une plateforme d'ingestion et de stockage capable de :
-1. **S'interfacer avec n'importe quelle typologie de base de données** (SQL, Document, Clé-Valeur, Séries Temporelles, Colonnes larges, Moteurs de recherche, etc.).
-2. **Découpler l'ingestion du stockage** pour absorber les pics de charge sans perte de données.
-3. **Consolider les données dans un stockage objet économique et performant** (format colonnaire Apache Parquet, métadonnées ACID Apache Iceberg / Hive Metastore).
-4. **Offrir un point d'accès SQL distribué unique** (Trino) pour fédérer l'exploration de toutes les sources.
-5. **Démontrer cette architecture localement** dans un environnement conteneurisé Docker Compose reproductible, tout en respectant des contraintes strictes d'empreinte mémoire et de reproductibilité.
+Comment concevoir localement, de manière 100 % reproductible via Docker Compose, une plateforme de données d'entreprise capable de :
+1. Se connecter et s'authentifier auprès de **n'importe quelle famille de base de données** (SQL, Document, Clé-Valeur, Colonnes larges, Séries temporelles, Stockage objet, Flux d'événements) avec sécurité TLS et Kerberos.
+2. Extraire plusieurs millions de transactions (jeu de données **PaySim**, 6,36 millions de lignes) **à mémoire bornée** sans faire saturer la JVM.
+3. Découpler les flux hétérogènes via un **bus d'événements Kafka (mode KRaft)** et des **Kafka MinIO S3 Sinks**.
+4. Stocker les données en format colonnaire compressé (**Parquet ZSTD/Snappy**) et gérer le cycle de vie transactionnel (**Apache Iceberg**).
+5. Isoler strictement les données par entreprise (**Multi-Tenancy**), appliquer les rôles (**RBAC**) et permettre à l'**Admin** et au **Data Owner** d'anonymiser dynamiquement les données sensibles (PII).
+6. Offrir une interface unifiée (**Next.js 15**) avec exploration de schémas, exécution de pipelines, requêtage SQL fédéré multi-bases et **Copilot IA (Text-to-SQL)**.
 
 ---
 
-## 2. Taxonomie Complète des Bases de Données Supportées
+## 2. Taxonomie des Bases de Données et Justification Polyglotte
 
-Pour répondre à l'exigence d'interopérabilité universelle, FinLake catégorise les sources de données selon la taxonomie moderne des systèmes de gestion de bases de données :
+FinLake couvre l'ensemble de la taxonomie moderne des systèmes de gestion de bases de données :
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                          TAXONOMIE DES BASES DE DONNÉES FINLAKE                        │
-├───────────────────────────────────────────┬────────────────────────────────────────────┤
-│     A. BASES OPÉRATIONNELLES & OLTP       │      B. BASES ANALYTIQUES & OLAP DÉDIÉES   │
-├───────────────────────────────────────────┼────────────────────────────────────────────┤
-│ 1. Relationnelles SQL (RDBMS)             │ 6. Séries Temporelles (Time Series)        │
-│ 2. Documents (Document Store)             │ 7. Vectorielles (Vector Databases)         │
-│ 3. Clé-Valeur (Key-Value Store)           │ 8. Moteurs de Recherche (Search Engines)   │
-│ 4. Colonnes Larges (Wide-Column Store)    │ 9. Entrepôts & Lacs Columnaires (OLAP/Lake)│
-│ 5. Graphes (Graph Databases)              │                                            │
-└───────────────────────────────────────────┴────────────────────────────────────────────┘
-```
-
-### A. Systèmes Opérationnels et Transactionnels (OLTP)
-
-| Catégorie | Exemples de Moteurs | Modèle de Données & Cas d'Usage Fintech | Mode d'Ingestion FinLake |
+| Catégorie | Moteurs / Conteneurs dans FinLake | Modèle de Données & Cas d'Usage Fintech | Stratégie d'Ingestion & Exploration |
 | :--- | :--- | :--- | :--- |
-| **1. Relationnel SQL** | Microsoft SQL Server, PostgreSQL, MySQL, Oracle | Schémas stricts avec clés primaires/étrangères, transactions ACID. Enregistrement des règlements, grands livres comptables, facturation. | **JDBC Direct** (Keyset pagination $O(1)$) ou **Kafka Source CDC** |
-| **2. Document** | MongoDB, Couchbase, AWS DocumentDB | Documents JSON/BSON hiérarchiques et semi-structurés. Profils marchands dynamiques, métadonnées de transactions PaySim enrichies, logs d'audit d'API. | **Kafka Connect MongoDB Source** (flux d'événements JSON vers Kafka) |
-| **3. Clé-Valeur** | Redis, AWS DynamoDB, Memcached | Accès ultra-rapide par clé en mémoire (latence sub-milliseconde). Sessions utilisateurs, jetons JWT révoqués, soldes temporaires, plafonds journaliers. | **Kafka Redis Source / Ingestion par scan** vers topic Kafka |
-| **4. Colonnes Larges** | Apache Cassandra, ScyllaDB, HBase | Partitionnement horizontal massif par clé de partition et clé de tri. Historiques de transactions par utilisateur à très haute cadence d'écriture. | **Kafka Cassandra Source** |
-| **5. Graphe** | Neo4j, Amazon Neptune | Nœuds et relations typées. Analyse des réseaux de fraude en anneau (circuits financiers suspects entre émetteurs et destinataires PaySim). | **Kafka Graph Source** / Export de graphe |
+| **1. Relationnel SQL (OLTP)** | **Microsoft SQL Server 2022** (`finlake-sqlserver`), **PostgreSQL 16** (`finlake-postgres-source`) | Schémas relationnels stricts (PK/FK, ACID). Transactions PaySim (`dbo.transactions`), clients, factures, paiements (`retail_banking`). | **Keyset Pagination $O(1)$** via JDBC + sonde 4 étapes (TCP, TLS, Auth, Catalogue). |
+| **2. Document (NoSQL)** | **MongoDB 7.0** (`finlake-mongodb`, port `27017`) | Documents BSON/JSON semi-structurés. Profils KYC clients (`customer_profiles`), métadonnées marchands, logs d'audit. | Connecteur source + aperçu/extraction vers Parquet via `SourceExplorerService` / Kafka Sink. |
+| **3. Clé-Valeur (In-Memory)** | **Redis 7.2 Alpine** (`finlake-redis`, port `6379`) | Paires clé-valeur en mémoire à latence sub-milliseconde. Sessions utilisateurs (`session:token:*`), rate limiting. | Inspection des keyspaces `db0` et extraction/streaming vers MinIO. |
+| **4. Colonnes Larges** | **Apache Cassandra** (`nordic-cassandra-tx`, port `9042`) | Partitionnement horizontal par clé de partition et clé de clustering. Grand livre mobile-money Nordic. | Exploration des partitions et ingestion Parquet par lots. |
+| **5. Séries Temporelles** | **InfluxDB** (`nordic-influx-telemetry`, port `8086`) | Mesures horodatées à haute fréquence (`ingestion_throughput_tps`, `kafka_sink_latency_ms`). | Télémétrie et archivage analytique OLAP. |
+| **6. Event Streaming & Sinks** | **Apache Kafka 3.7.0 KRaft** (`finlake-kafka`, port `9092`) | Bus de découplage d'événements (`finlake.polyglot.events`, `finlake.transactions.events`). | Producteur Spring Kafka + **Kafka MinIO S3 Sink Worker** (`KafkaMinioSinkService`). |
+| **7. Stockage Objet S3** | **MinIO** (`finlake-minio`, ports `9000`/`9001`) | Stockage objet compatible AWS S3 (`raw/`, `staging/`, `curated/`, `manifests/`, `kafka_sink/`, `iceberg/`). | Cible analytique unique en format Parquet / NDJSON. |
+| **8. Authentification Entreprise** | **MIT Kerberos 5 KDC** (`finlake-kerberos`, ports `88`/`749`) | Gestionnaire de tickets TGT pour le realm `FINLAKE.INTERNAL` (`finlake/admin`, `trino/finlake-trino`, `sqlserver/finlake-sqlserver`). | Validation réseau/realm depuis l'explorateur de sources. |
+| **9. Entrepôt / Lac Colonnaire (OLAP)** | **Trino 452**, **Hive Metastore 4.0.0**, **Apache Iceberg** | Exécution vectorisée MPP, élagage de partitions (`event_date`), snapshots ACID et time-travel. | Requêtage mono-base et jointures fédérées multi-bases. |
 
-### B. Systèmes Analytiques et Spécialisés (OLAP)
+---
 
-| Catégorie | Exemples de Moteurs | Modèle de Données & Cas d'Usage Fintech | Rôle dans l'Architecture FinLake |
+## 3. Justifications des Choix Techniques d'Architecture
+
+### 3.1 Plan de Contrôle & Moteur d'Ingestion : Java 21 LTS + Spring Boot 3.3.5
+* **Pourquoi Java 21 & Spring Boot 3.3.5 au lieu de Python/FastAPI ?**
+  * **Typage fort et stabilité** : La gestion de flux binaires Parquet, des connexions JDBC multiples (SQL Server, PostgreSQL, Trino) et du client Kafka bénéficie directement de l'écosystème natif JVM et de la vérification à la compilation.
+  * **Virtual Threads & Concurrence** : Exécution asynchrone fiable des jobs d'extraction (`ExecutorService`) sans bloquer les requêtes HTTP REST du Control Plane.
+  * **Unification** : Le backend `finlake-backend` regroupe de manière modulaire l'API REST, le moteur d'ingestion natif (`NativeJavaIngestionService`), le puits Kafka (`KafkaMinioSinkService`), le routeur fédéré (`TrinoAnalyticsService`) et la gouvernance (`SecurityGovernanceService`).
+
+### 3.2 Extraction à Mémoire Bornée : Keyset Pagination $O(1)$ vs `OFFSET / LIMIT`
+* **Problème de conception** : Sur un jeu de données de 6,36 millions de lignes (`dbo.transactions`), une requête `OFFSET 5000000 FETCH NEXT 50000` oblige le SGBD à lire et jeter 5 millions de lignes à chaque batch ($O(N^2)$).
+* **Choix retenu** : **Keyset Pagination** indexée ($O(1)$) + écriture en streaming par lots configurables (`batch_size` = 10k, 50k, 100k, 250k) dans un répertoire temporaire local avant conversion Parquet et envoi atomique vers MinIO (`staging/` → vérification → `curated/` + `manifests/`).
+* **Résultat** : Consommation RAM constante quelle que soit la taille de la table extraite.
+
+### 3.3 Conversion Colonnaire : DuckDB embarqué + Apache Parquet (Snappy / ZSTD)
+* **Pourquoi Parquet + ZSTD/Snappy ?**
+  * Le format CSV brut de PaySim occupe ~470 Mo sans compression et impose un scan séquentiel complet.
+  * En **Parquet + ZSTD**, l'empreinte disque chute de **-68,5 %** (~148 Mo) grâce à l'encodage par dictionnaire et au stockage colonnaire.
+  * Couplé au **partitionnement temporel dérivé de `step`** (`event_date=YYYY-MM-DD`), l'élagage de partitions (*partition pruning*) dans Trino réduit la latence des requêtes analytiques jusqu'à **-92,8 %**.
+* **Pourquoi DuckDB JDBC embarqué dans Java ?**
+  * Évite la dépendance lourde à un cluster Apache Spark (qui nécessiterait plusieurs Go de RAM supplémentaires) tout en offrant une sérialisation Parquet native ultra-rapide directement depuis les batches CSV temporaires.
+
+### 3.4 Découplage Polyglotte : Apache Kafka en Mode KRaft (sans ZooKeeper)
+* **Problème de conception** : Un cluster Kafka traditionnel nécessite Apache ZooKeeper (2 JVM distinctes, > 2 Go de RAM, temps de démarrage lent).
+* **Choix retenu** : **`apache/kafka:3.7.0` en mode KRaft** (*Kafka Raft Metadata*) avec heap borné (`-Xms256m -Xmx512m`).
+* **Rôle du Kafka MinIO S3 Sink (`KafkaMinioSinkService`)** : Reçoit les événements de n'importe quelle base polyglotte (MongoDB, Redis, SQL, etc.) sur les topics `finlake.polyglot.events` / `finlake.transactions.events`, les tamponne en micro-batches et les dépose dans `s3://finlake/curated/kafka_sink/`.
+
+### 3.5 Stockage & Catalogue : MinIO S3 + Hive Metastore 4.0.0 + Apache Iceberg
+* **MinIO (`alpine/minio`)** : Fournit une API 100 % compatible AWS S3 en local, sans coût cloud ni verrouillage fournisseur. L'initialiseur `finlake-minio-init` prépare automatiquement les préfixes (`raw`, `curated`, `staging`, `manifests`, `warehouse`, `kafka_sink`).
+* **Hive Metastore + PostgreSQL (`5433:5432`)** : Découple le schéma logique des fichiers physiques stockés dans MinIO. Le port hôte `5433` (et `5434` pour la source PostgreSQL) évite tout conflit avec un PostgreSQL local sur le port `5432`.
+* **Apache Iceberg** : Ajoute les garanties ACID, les commits immuables par snapshots et les requêtes de voyage dans le temps (*Time-Travel* `FOR VERSION AS OF`), isolées par entreprise dans `IcebergService`.
+
+### 3.6 Moteur de Requêtes Fédérées & Copilot IA (`TrinoAnalyticsService` & `AiTextToSqlService`)
+* **Trino 452** : Moteur SQL MPP capable de lire les fichiers Parquet de MinIO via Hive et Iceberg.
+* **Routeur Fédéré Polyglotte** : Permet d'exécuter depuis une seule console `/analytics` soit des requêtes Trino pures (`hive`, `iceberg`), soit des requêtes directes sur des bases non-SQL (`mongodb`, `redis`, `kafka`, `cassandra`, `influxdb`, `postgresql`), soit des **jointures fédérées multi-bases** (`catalog = federated`, ex. `postgresql` + `mongodb` ou `hive` + `kafka`).
+* **FinLake AI Copilot** : Architecture hybride combinant inférence LLM (API Groq) et un moteur sémantique déterministe hors-ligne pour garantir 100 % de disponibilité même sans clé API ou connexion Internet.
+
+---
+
+## 4. Justifications des Choix de Conception (UX, Sécurité & Gouvernance)
+
+### 4.1 Sonde Réseau & TLS Réelle en 4 Étapes (`SourceExplorerService`)
+* **Choix de conception** : Ne jamais « mocker » la validation d'une connexion. Avant d'enregistrer une source dans `/sources/new`, le backend exécute 4 vérifications séquentielles réelles :
+  1. **Couche Réseau** : Socket TCP non-bloquante avec timeout configurable (`connection_timeout`).
+  2. **Couche Chiffrement (TLS/SSL)** : Respect réel de `encrypt` et `trust_server_certificate`. Par exemple, SQL Server Docker utilise un certificat auto-signé : si `encrypt=true` et `trust_server_certificate=false`, la JVM lève volontairement une vraie `SunCertPathBuilderException` (PKIX) à l'étape 2 avec une checklist de résolution ciblée.
+  3. **Couche Authentification** : Capture des codes d'erreur réels (`18456` SQL Server, `28P01` PostgreSQL, SCRAM-SHA-256 MongoDB, AUTH Redis, Kerberos TGT).
+  4. **Couche Catalogue & Découverte** : Requête de version moteur et découverte live des tables, collections, topics ou keyspaces.
+
+### 4.2 Isolation Multi-Entreprises (Multi-Tenancy) & Rôles RBAC
+La plateforme isole **3 entreprises distinctes** avec leurs propres données, sources, jobs, catalogues et snapshots Iceberg :
+* **Acme Payments Global (`tenant_acme`)** : SQL Server PaySim (`6,36M` lignes), Kafka, MinIO, Kerberos KDC (`iceberg.finlake_iceberg.transactions`).
+* **Apex Retail Bank EU (`tenant_apex`)** : PostgreSQL 16, MongoDB, Redis (`1,48M` lignes, `iceberg.apex_eu_iceberg.retail_ledger`).
+* **Nordic Mobile Money Ltd (`tenant_nordic`)** : Kafka Stream, Cassandra Wide-Column, InfluxDB Time-Series (`845k` lignes, `iceberg.nordic_iceberg.mobile_money_ledger`).
+
+Les rôles appliqués sont :
+* **`ADMIN`** & **`DATA_OWNER`** : Accès complet + droit exclusif de modifier la politique d'anonymisation de chaque utilisateur en temps réel (`POST /api/security/policies`).
+* **`AUDITOR`** : Accès aux données brutes non masquées (sauf si l'Admin/Data Owner force son anonymisation) et au journal d'audit.
+* **`DATA_ENGINEER`** : Gestion des pipelines d'ingestion et métadonnées, données PII masquées par défaut.
+* **`ANALYST`** : Exploration SQL et graphiques, données PII dynamiquement anonymisées (`e***@domain.com`, `L***`, `DE89****`).
+
+### 4.3 Masquage Dynamique en Mémoire (`SecurityGovernanceService`)
+* **Pourquoi masquer à la volée dans la couche API plutôt que de dupliquer les tables dans MinIO ?**
+  * Évite la duplication coûteuse des fichiers Parquet par rôle utilisateur.
+  * Garantit que le changement de politique par l'**Admin** ou le **Data Owner** dans `/security` prend effet **immédiatement** sur les requêtes Trino Analytics, les jointures fédérées (y compris les colonnes préfixées `mongodb_email`, `mongodb_iban`) et les aperçus de **Source Explorer**.
+  * Chaque exécution est tracée de façon immuable dans l'**Audit Ledger** (utilisateur, rôle, requête SQL, latence, activation du masquage).
+
+### 4.4 Interface Utilisateur & Observabilité (`Next.js 15` + Wireframe Light Theme)
+* **Thème clair haute lisibilité (`#f8f9fa`, `bg-white`, `border-zinc-200`, `#18181b`)** : Harmonisé sur toutes les pages selon le wireframe de référence pour une lisibilité optimale en présentation et démonstration.
+* **Transparence d'exécution** : Ajout de sections dédiées **Pipeline Execution Flow** (`/jobs`) et **Query Execution Flow** (`/analytics`) permettant de suivre visuellement chaque étape de la donnée (de l'extraction/sécurité jusqu'au stockage MinIO/visualisation).
+
+---
+
+## 5. Arbitrages et Compromis Assumés (Trade-offs)
+
+| Dimension | Choix Retenu | Alternative Écartée | Raison Technique |
 | :--- | :--- | :--- | :--- |
-| **6. Séries Temporelles** | InfluxDB, TimescaleDB, QuestDB | Données horodatées avec métriques (taux d'échec d'extraction, latence réseau, débits TPS). | Métriques de supervision et télémétrie des pipelines d'ingestion. |
-| **7. Vectorielle** | Milvus, Qdrant, Pinecone, Chroma | Vecteurs d'embeddings (haute dimension) pour similarité sémantique. Détection d'anomalies de comportement bancaire par proximité vectorielle. | Extension du Copilot IA pour recherche vectorielle sur le catalogue métier. |
-| **8. Moteur de Recherche** | Elasticsearch, OpenSearch, Meilisearch | Index inversé plein texte. Recherche instantanée dans les descriptions de colonnes, tags de conformité et manifestes de jobs. | Découverte rapide dans le Data Catalog & Business Glossary. |
-| **9. Data Warehouse & Lac Colonnaire** | Trino, Apache Iceberg, MinIO, ClickHouse, Snowflake | Stockage colonnaire compressé (Apache Parquet) avec partitionnement et élagage de colonnes/fichiers. | **Cœur de la plateforme FinLake** : consolidation unifiée de toutes les sources pour requêtage SQL distribué. |
-
----
-
-## 3. Justification de l'Architecture Hybride : Kafka Connect & Sinks
-
-### 3.1 Pourquoi intégrer Kafka et des Kafka Sinks ?
-Lorsqu'une organisation manipule des bases de données de natures variées (SQL, MongoDB, Redis, etc.), deux architectures s'affrontent :
-
-1. **L'approche point-à-point (Point-to-Point)** :
-   * Chaque base source est extraite par un code spécifique qui tente d'écrire directement dans le Data Lake.
-   * *Inconvénients* : Fort couplage, surcharge des bases sources en cas de reprise sur incident, complexité de maintenance $O(N \times M)$.
-2. **L'approche bus d'événements avec Kafka & Kafka Sinks (Choix FinLake)** :
-   * **Découplage absolu** : N'importe quelle base (SQL Server, MongoDB, Redis, etc.) publie ses enregistrements ou changements de données dans un **topic Kafka** dédié (`finlake.polyglot.<type>.<name>`).
-   * **Kafka Sink universel vers MinIO S3** : Un composant de type *Kafka Sink* consomme les événements des topics, les rassemble en micro-batches, les convertit au format colonnaire **Apache Parquet** et les dépose directement dans les préfixes de stockage objet MinIO (`s3://finlake/curated/kafka_sink/`).
-   * **Uniformisation analytique** : Quel que soit le format d'origine (ligne SQL, document JSON MongoDB, clé Redis), les données atterrissent dans MinIO sous forme de fichiers Parquet standardisés, catalogués par Hive/Iceberg et immédiatement interrogeables via Trino.
-
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                         FLUX DE DONNÉES POLYGLOTTE FINLAKE                             │
-│                                                                                        │
-│  [SQL Server] ────┐                                                                    │
-│  [PostgreSQL] ────┼───► [Kafka Source Connectors] ───► [Topic Kafka]                  │
-│  [MongoDB]    ────┤                                          │                         │
-│  [Redis]      ────┘                                          ▼                         │
-│                                                   [Kafka MinIO S3 Sink]                │
-│                                                              │                         │
-│                                                     (Format Parquet)                   │
-│                                                              ▼                         │
-│                                                   [MinIO S3 Data Lake]                 │
-│                                                              │                         │
-│                                                (Enregistrement Catalogue)              │
-│                                                              ▼                         │
-│                                                   [Trino Distributed SQL]              │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 3.2 Arbitrage sur le mode de déploiement de Kafka : KRaft (sans Zookeeper)
-Dans un contexte de développement local conteneurisé, exécuter un cluster Apache Kafka traditionnel nécessite un service externe Apache ZooKeeper.
-* **Problème** : Deux JVM distinctes (ZooKeeper + Kafka Broker), nécessitant plus de 2 à 3 Go de RAM sur Docker Desktop et augmentant le risque d'échec de démarrage.
-* **Choix FinLake** : Utilisation d'**Apache Kafka en mode KRaft (Kafka Raft Metadata)**. Le broker gère son propre quorum de métadonnées sans aucun conteneur ZooKeeper.
-* **Gestion des ressources** :
-  * Variables JVM : `KAFKA_JVM_PERFORMANCE_OPTS: "-Xms256m -Xmx512m"`
-  * Le service s'exécute avec une empreinte mémoire maîtrisée (< 512 Mo de RAM), rendant la plateforme fluide sur n'importe quel ordinateur portable de développement.
-
----
-
-## 4. Justification des Autres Choix Technologiques du Socle
-
-| Composant | Technologie Retenue | Justification & Valeur Ajoutée |
-| :--- | :--- | :--- |
-| **Plan de Contrôle** | **Java 21 LTS + Spring Boot 3.3.5** | Type-safety absolu, Virtual Threads (Project Loom) pour gérer des milliers de requêtes I/O simultanées, intégration native avec l'écosystème Apache (Parquet, Hadoop S3A, Kafka Client). |
-| **Stockage Objet** | **MinIO (API S3 compatible)** | Empreinte légère, 100% compatible AWS S3, permet de tester en local une topologie cloud-ready sans dépendance à un fournisseur cloud payant. |
-| **Format Colonnaire** | **Apache Parquet (ZSTD / Snappy)** | Réduction d'espace de plus de 68% par rapport au CSV d'origine PaySim, encodage dictionnaire, statistiques intégrées (Min/Max) pour l'élagage des requêtes. |
-| **Catalogue Métadonnées** | **Hive Metastore 4.0.0 & Apache Iceberg** | Permet à Trino de découvrir les schémas et partitions S3. Support des garanties ACID, du voyage dans le temps (*time-travel*) et des rollbacks via Iceberg. |
-| **Moteur SQL** | **Trino 452 (Distributed SQL)** | Capacité de requêtage fédéré : une seule requête SQL ANSI peut joindre une table Parquet externe stockée dans MinIO et un flux temps réel provenant d'un topic Kafka via le `trino-kafka-connector`. |
-| **Interface Utilisateur** | **Next.js 15 (React 19, TypeScript)** | Interface moderne basée sur les composants serveur (RSC), haut contraste, conforme au Wireframe de la plateforme (`#f8f9fa`, cartes blanches, accessibilité maximale). |
-
----
-
-## 5. Matrice des Décisions et Compromis (Trade-offs)
-
-| Décision | Option Retenue | Alternative Écartée | Justification |
-| :--- | :--- | :--- | :--- |
-| **Orchestration** | Docker Compose | Kubernetes (k8s) | Docker Compose garantit un démarrage en 1 commande (`docker compose up -d`) accessible à tout évaluateur, sans cluster Minikube/Kind lourd. |
-| **Ingestion Batch** | Keyset Pagination $O(1)$ | Pagination `OFFSET / LIMIT` | `OFFSET` dégrade les performances de manière quadratique sur 6,36 millions de lignes. Le Keyset utilise un index strict sur `id` ou `step`. |
-| **Coordination Kafka** | Mode KRaft intégré | Apache ZooKeeper | Suppression d'un composant obsolète, démarrage 3x plus rapide et économie de 1 Go de mémoire vive. |
-| **Échange de Données** | Kafka Sinks vers Parquet S3 | Écriture directe fichier par fichier | Kafka Sink isole la source des indisponibilités réseau temporaires de MinIO grâce au tamponnage dans le topic. |
-
----
-
-## 6. Synthèse
-
-Le document de contexte établit formellement que FinLake n'est pas un simple script d'extraction SQL vers CSV, mais une **plateforme de données polyglotte d'entreprise** :
-* Elle modélise et respecte l'ensemble des 8 familles de bases de données (SQL, NoSQL, Séries temporelles, Graphes, Vectorielles, etc.).
-* Elle exploite **Kafka et les Kafka Sinks** pour assurer un découplage total entre la production des événements et la persistance analytique colonnaire dans MinIO.
-* Elle garantit une reproductibilité intégrale sur machine locale grâce à Docker Compose et une configuration rigoureuse des ressources mémoire.
+| **Orchestration locale** | Docker Compose | Kubernetes (k8s / Minikube) | Déploiement local en 1 commande (`docker compose up -d`) sur un poste standard sans surcharge cluster. |
+| **Traitement Parquet** | Java 21 + DuckDB embarqué | Apache Spark | Empreinte mémoire réduite et latence de démarrage quasi nulle pour le traitement par lots. |
+| **Coordination Kafka** | Mode KRaft intégré | Apache ZooKeeper | Suppression d'un conteneur superflu, économie de ~1 Go de RAM et démarrage plus rapide. |
+| **Auth Kerberos** | KDC Alpine léger (`Dockerfile.kerberos`) | Image KDC lourde Ubuntu/CentOS | Image de ~15 Mo déterministe et rapide à construire localement. |
+| **Registre des sources & politiques** | Registre en mémoire thread-safe (`ConcurrentHashMap`) + Jobs persistés dans SQL Server | Base PostgreSQL dédiée pour la config | Démarrage instantané et résilience immédiate tout en gardant la persistance durable des jobs et runs dans SQL Server (`dbo.ingestion_jobs`, `dbo.job_runs`). |
