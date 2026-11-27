@@ -23,9 +23,10 @@ export default function LoginPage() {
       // Persist auth session & active persona
       localStorage.setItem("finlake_auth_session", JSON.stringify(session));
       localStorage.setItem("finlake_active_persona", session.user.id);
+      window.dispatchEvent(new Event("finlake-session-changed"));
       
-      // Redirect to analytics
-      router.push("/analytics");
+      // Redirect to overview dashboard
+      router.push("/");
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please verify your username and password.");
     } finally {
@@ -143,10 +144,37 @@ export default function LoginPage() {
             </div>
 
             <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between hover:border-zinc-300 transition cursor-pointer"
+                 onClick={() => selectDemoAccount("marcus.owner", "FinLake2026!")}>
+              <div>
+                <span className="font-bold text-zinc-900 block">Marcus Vance (Apex Retail Bank EU)</span>
+                <span className="text-[11px] text-purple-700 font-medium">Data Owner • Full Access & Anonymization Control</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-1 rounded bg-white border border-zinc-200 text-zinc-600">Load</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between hover:border-zinc-300 transition cursor-pointer"
                  onClick={() => selectDemoAccount("elena.engineer", "FinLake2026!")}>
               <div>
-                <span className="font-bold text-zinc-900 block">Elena Rostova (Apex Bank EU)</span>
-                <span className="text-[11px] text-blue-700 font-medium">Data Engineer • Isolated Tenant B</span>
+                <span className="font-bold text-zinc-900 block">Elena Rostova (Apex Retail Bank EU)</span>
+                <span className="text-[11px] text-blue-700 font-medium">Data Engineer • Isolated Tenant B (PG / Mongo / Redis)</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-1 rounded bg-white border border-zinc-200 text-zinc-600">Load</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between hover:border-zinc-300 transition cursor-pointer"
+                 onClick={() => selectDemoAccount("nordic.lead", "FinLake2026!")}>
+              <div>
+                <span className="font-bold text-zinc-900 block">Astrid Lindqvist (Nordic Mobile Money)</span>
+                <span className="text-[11px] text-amber-700 font-medium">Data Owner • Isolated Tenant C (Kafka / Cassandra / Influx)</span>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-1 rounded bg-white border border-zinc-200 text-zinc-600">Load</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 flex items-center justify-between hover:border-zinc-300 transition cursor-pointer"
+                 onClick={() => selectDemoAccount("sven.analyst", "FinLake2026!")}>
+              <div>
+                <span className="font-bold text-zinc-900 block">Sven Bergstrom (Nordic Mobile Money)</span>
+                <span className="text-[11px] text-emerald-700 font-medium">Analyst • Isolated Tenant C • Masked PII</span>
               </div>
               <span className="text-[10px] font-mono px-2 py-1 rounded bg-white border border-zinc-200 text-zinc-600">Load</span>
             </div>

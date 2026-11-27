@@ -28,7 +28,7 @@ import {
   Eye,
   EyeOff
 } from "lucide-react";
-import { runTrinoQuery, generateSqlFromPrompt } from "@/lib/api";
+import { runTrinoQuery, generateSqlFromPrompt, getActiveTenantContext } from "@/lib/api";
 import {
   ResponsiveContainer,
   BarChart,
@@ -238,15 +238,8 @@ export default function AnalyticsPage() {
   }, [result, yAxisKey, xAxisKey]);
 
   const getSecurityContext = () => {
-    const pId = typeof window !== "undefined" ? localStorage.getItem("finlake_active_persona") : null;
-    if (pId === "user_david_auditor") {
-      return { tenantId: "tenant_acme", userRole: "AUDITOR", userId: "user_david_auditor", userName: "David Miller" };
-    } else if (pId === "user_alex_admin") {
-      return { tenantId: "tenant_acme", userRole: "ADMIN", userId: "user_alex_admin", userName: "Alex Chen" };
-    } else if (pId === "user_elena_engineer") {
-      return { tenantId: "tenant_apex", userRole: "DATA_ENGINEER", userId: "user_elena_engineer", userName: "Elena Rostova" };
-    }
-    return { tenantId: "tenant_acme", userRole: "ANALYST", userId: "user_sarah_analyst", userName: "Sarah Connor" };
+    const ctx = getActiveTenantContext();
+    return { tenantId: ctx.tenantId, userRole: ctx.userRole, userId: ctx.userId, userName: ctx.userName };
   };
 
   const handleRunQuery = async () => {

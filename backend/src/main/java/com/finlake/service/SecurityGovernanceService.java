@@ -26,6 +26,8 @@ public class SecurityGovernanceService {
     private final Map<String, TenantDTO> tenants = new ConcurrentHashMap<>();
     private final Map<String, UserPersonaDTO> personas = new ConcurrentHashMap<>();
     private final List<AuditLogDTO> auditLedger = new CopyOnWriteArrayList<>();
+    // Data Owner anonymization overrides: userId -> true (anonymized) / false (unmasked)
+    private final Map<String, Boolean> userAnonymizationPolicies = new ConcurrentHashMap<>();
 
     public SecurityGovernanceService() {
         initTenantsAndPersonas();
@@ -126,10 +128,57 @@ public class SecurityGovernanceService {
             true
         );
 
+        UserPersonaDTO marcus = new UserPersonaDTO(
+            "user_marcus_owner",
+            "marcus.owner",
+            "Marcus Vance",
+            "marcus.v@apexbank.eu",
+            apex.id(),
+            "DATA_OWNER",
+            List.of("ALL_PERMISSIONS", "MANAGE_ANONYMIZATION", "VIEW_UNMASKED_PII", "READ_QUERIES", "TRIGGER_PIPELINES"),
+            true,
+            true,
+            true
+        );
+
+        UserPersonaDTO nordicLead = new UserPersonaDTO(
+            "user_nordic_owner",
+            "nordic.lead",
+            "Astrid Lindqvist",
+            "astrid.l@nordicmoney.se",
+            nordic.id(),
+            "DATA_OWNER",
+            List.of("ALL_PERMISSIONS", "MANAGE_ANONYMIZATION", "VIEW_UNMASKED_PII", "READ_QUERIES", "TRIGGER_PIPELINES"),
+            true,
+            true,
+            true
+        );
+
+        UserPersonaDTO nordicAnalyst = new UserPersonaDTO(
+            "user_nordic_analyst",
+            "sven.analyst",
+            "Sven Bergstrom",
+            "sven.b@nordicmoney.se",
+            nordic.id(),
+            "ANALYST",
+            List.of("READ_QUERIES", "CREATE_CHARTS", "EXPORT_CSV"),
+            false,
+            false,
+            false
+        );
+
         personas.put(sarah.id(), sarah);
         personas.put(david.id(), david);
         personas.put(alex.id(), alex);
         personas.put(elena.id(), elena);
+        personas.put(marcus.id(), marcus);
+        personas.put(nordicLead.id(), nordicLead);
+        personas.put(nordicAnalyst.id(), nordicAnalyst);
+
+        // Initialize default anonymization policy per user
+        for (UserPersonaDTO p : personas.values()) {
+            userAnonymizationPolicies.put(p.id(), !p.canViewPii());
+        }
 
         // Initial sample audit logs
         auditLedger.add(new AuditLogDTO(
@@ -170,11 +219,69 @@ public class SecurityGovernanceService {
     }
 
     public List<UserPersonaDTO> getPersonas() {
-        return new ArrayList<>(personas.values());
+        return personas.values().stream()
+            .map(p -> {
+                boolean isAnon = userAnonymizationPolicies.getOrDefault(p.id(), !p.canViewPii());
+                return new UserPersonaDTO(
+                    p.id(), p.username(), p.fullName(), p.email(), p.tenantId(),
+                    p.role(), p.permissions(), !isAnon, p.canRunJobs(), p.canViewIceberg()
+                );
+            })
+            .toList();
     }
 
     public Optional<UserPersonaDTO> getPersona(String personaId) {
-        return Optional.ofNullable(personas.get(personaId));
+        UserPersonaDTO p = personas.get(personaId);
+        if (p == null) return Optional.empty();
+        boolean isAnon = userAnonymizationPolicies.getOrDefault(p.id(), !p.canViewPii());
+        return Optional.of(new UserPersonaDTO(
+            p.id(), p.username(), p.fullName(), p.email(), p.tenantId(),
+            p.role(), p.permissions(), !isAnon, p.canRunJobs(), p.canViewIceberg()
+        ));
+    }
+
+    public Map<String, Object> getAnonymizationPolicies(String tenantId) {
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (UserPersonaDTO p : getPersonas()) {
+            if (tenantId != null && !tenantId.isBlank() && !"ALL".equalsIgnoreCase(tenantId)
+                    && !p.tenantId().equalsIgnoreCase(tenantId)) {
+                continue;
+            }
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("user_id", p.id());
+            entry.put("username", p.username());
+            entry.put("full_name", p.fullName());
+            entry.put("role", p.role());
+            entry.put("tenant_id", p.tenantId());
+            entry.put("anonymized", userAnonymizationPolicies.getOrDefault(p.id(), !p.canViewPii()));
+            list.add(entry);
+        }
+        return Map.of("policies", list);
+    }
+
+    public Map<String, Object> updateAnonymizationPolicy(String targetUserId, boolean anonymize, String requesterRole) {
+        if (!"DATA_OWNER".equalsIgnoreCase(requesterRole) && !"ADMIN".equalsIgnoreCase(requesterRole)) {
+            throw new SecurityException("Access denied: Only DATA_OWNER or ADMIN can modify anonymization policies.");
+        }
+        UserPersonaDTO target = personas.get(targetUserId);
+        if (target == null) {
+            throw new IllegalArgumentException("User not found: " + targetUserId);
+        }
+        userAnonymizationPolicies.put(targetUserId, anonymize);
+        log.info("Data Owner ({}) set anonymization for user {} ({}) to {}", requesterRole, target.username(), target.role(), anonymize);
+        return Map.of(
+            "status", "UPDATED",
+            "user_id", targetUserId,
+            "username", target.username(),
+            "anonymized", anonymize
+        );
+    }
+
+    public boolean shouldAnonymizeUser(String userId, String role) {
+        if (userId != null && userAnonymizationPolicies.containsKey(userId)) {
+            return userAnonymizationPolicies.get(userId);
+        }
+        return "ANALYST".equalsIgnoreCase(role) || "DATA_ENGINEER".equalsIgnoreCase(role);
     }
 
     public List<AuditLogDTO> getAuditLogs(String tenantId) {
@@ -198,12 +305,16 @@ public class SecurityGovernanceService {
      * If user role does NOT have permission to view PII, mask emails, names, and account numbers.
      */
     public QueryResultDTO applyDynamicMasking(QueryResultDTO rawResult, String role) {
+        return applyDynamicMasking(rawResult, null, role);
+    }
+
+    public QueryResultDTO applyDynamicMasking(QueryResultDTO rawResult, String userId, String role) {
         if (rawResult == null || rawResult.rows() == null || rawResult.rows().isEmpty()) {
             return rawResult;
         }
 
-        // Only apply masking if role is ANALYST or user cannot view PII
-        boolean shouldMask = "ANALYST".equalsIgnoreCase(role) || "DATA_ENGINEER".equalsIgnoreCase(role);
+        // Check Data Owner policy override first, then role default
+        boolean shouldMask = shouldAnonymizeUser(userId, role);
         if (!shouldMask) {
             return rawResult;
         }

@@ -28,6 +28,7 @@ public class SourceExplorerService {
     public static final String DEFAULT_SOURCE_ID = "erp-production";
 
     private final JdbcTemplate jdbcTemplate;
+    private final SecurityGovernanceService securityService;
 
     @Value("${spring.datasource.url:jdbc:sqlserver://127.0.0.1:1433;databaseName=finlake_source;encrypt=false;trustServerCertificate=true}")
     private String dbUrl;
@@ -47,9 +48,11 @@ public class SourceExplorerService {
     // In-memory registry of sources (seeded from wireframe specifications)
     private final Map<String, DataSourceItemDTO> sourceRegistry = new ConcurrentHashMap<>();
     private final Map<String, SourceProbeRequestDTO> sourceConfigs = new ConcurrentHashMap<>();
+    private final Map<String, String> sourceTenants = new ConcurrentHashMap<>();
 
-    public SourceExplorerService(JdbcTemplate jdbcTemplate) {
+    public SourceExplorerService(JdbcTemplate jdbcTemplate, SecurityGovernanceService securityService) {
         this.jdbcTemplate = jdbcTemplate;
+        this.securityService = securityService;
         initSeedSources();
     }
 
@@ -237,6 +240,79 @@ public class SourceExplorerService {
                 LocalDateTime.now().minusDays(4),
                 "Microsoft SQL Server 2017"
         ));
+
+        // 8. Nordic Mobile Money Polyglot Sources (tenant_nordic)
+        sourceRegistry.put("nordic-kafka-stream", new DataSourceItemDTO(
+                "nordic-kafka-stream",
+                "nordic-kafka-stream",
+                "Apache Kafka",
+                "kafka:9092",
+                9092,
+                "finlake.transactions.events",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(8),
+                "Apache Kafka 3.7.0 (KRaft Event Hub)"
+        ));
+        sourceConfigs.put("nordic-kafka-stream", new SourceProbeRequestDTO(
+                "nordic-kafka-stream", "kafka", "kafka", 9092,
+                "finlake.transactions.events", "plaintext", "anonymous", "",
+                false, true, 10
+        ));
+
+        sourceRegistry.put("nordic-cassandra-tx", new DataSourceItemDTO(
+                "nordic-cassandra-tx",
+                "nordic-cassandra-tx",
+                "Cassandra (Wide-Column)",
+                "cassandra-nordic.corp.internal:9042",
+                9042,
+                "nordic_ledger",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(35),
+                "Apache Cassandra 4.1 (Wide-Column)"
+        ));
+        sourceConfigs.put("nordic-cassandra-tx", new SourceProbeRequestDTO(
+                "nordic-cassandra-tx", "cassandra", "cassandra-nordic.corp.internal", 9042,
+                "nordic_ledger", "password", "nordic_svc", "NordicPass2026!",
+                true, true, 15
+        ));
+
+        sourceRegistry.put("nordic-influx-telemetry", new DataSourceItemDTO(
+                "nordic-influx-telemetry",
+                "nordic-influx-telemetry",
+                "InfluxDB (Time-Series)",
+                "influx-nordic.corp.internal:8086",
+                8086,
+                "mobile_tps_metrics",
+                "connected",
+                null,
+                LocalDateTime.now().minusHours(1),
+                "InfluxDB 2.7 (Time-Series)"
+        ));
+        sourceConfigs.put("nordic-influx-telemetry", new SourceProbeRequestDTO(
+                "nordic-influx-telemetry", "influxdb", "influx-nordic.corp.internal", 8086,
+                "mobile_tps_metrics", "token", "nordic_admin", "InfluxToken2026!",
+                true, true, 10
+        ));
+
+        // Map sources to their owning enterprise tenant
+        sourceTenants.put("erp-production", "tenant_acme");
+        sourceTenants.put("kafka-finlake-hub", "tenant_acme");
+        sourceTenants.put("minio-archive-s3", "tenant_acme");
+        sourceTenants.put("crm-sales", "tenant_acme");
+        sourceTenants.put("finance-dwh", "tenant_acme");
+        sourceTenants.put("hr-core", "tenant_acme");
+        sourceTenants.put("logistics-wms", "tenant_acme");
+        sourceTenants.put("retail-pos-archive", "tenant_acme");
+
+        sourceTenants.put("retail-pos-pg", "tenant_apex");
+        sourceTenants.put("mongo-customer-profiles", "tenant_apex");
+        sourceTenants.put("redis-session-cache", "tenant_apex");
+
+        sourceTenants.put("nordic-kafka-stream", "tenant_nordic");
+        sourceTenants.put("nordic-cassandra-tx", "tenant_nordic");
+        sourceTenants.put("nordic-influx-telemetry", "tenant_nordic");
     }
 
     public static String validateIdentifier(String name) {
@@ -248,6 +324,29 @@ public class SourceExplorerService {
 
     public List<DataSourceItemDTO> listConfiguredSources() {
         return new ArrayList<>(sourceRegistry.values());
+    }
+
+    public List<DataSourceItemDTO> listConfiguredSources(String tenantId) {
+        if (tenantId == null || tenantId.isBlank() || "ALL".equalsIgnoreCase(tenantId)) {
+            return new ArrayList<>(sourceRegistry.values());
+        }
+        return sourceRegistry.values().stream()
+                .filter(s -> tenantId.equalsIgnoreCase(sourceTenants.getOrDefault(s.id(), "tenant_acme")))
+                .toList();
+    }
+
+    public String getTenantForSource(String sourceId) {
+        if (sourceId == null) return "tenant_acme";
+        if (sourceTenants.containsKey(sourceId)) {
+            return sourceTenants.get(sourceId);
+        }
+        if (sourceId.toLowerCase().contains("postgres") || sourceId.toLowerCase().contains("apex") || sourceId.toLowerCase().contains("mongo") || sourceId.toLowerCase().contains("redis")) {
+            return "tenant_apex";
+        }
+        if (sourceId.toLowerCase().contains("nordic")) {
+            return "tenant_nordic";
+        }
+        return "tenant_acme";
     }
 
     public List<SourceInfoDTO> listSources() {
@@ -565,13 +664,42 @@ public class SourceExplorerService {
     }
 
     public DataSourceItemDTO registerSource(SourceProbeRequestDTO req) {
+        return registerSource(req, "tenant_acme");
+    }
+
+    public DataSourceItemDTO registerSource(SourceProbeRequestDTO req, String tenantId) {
         String id = req.connectionName().toLowerCase().trim().replace(" ", "-");
-        boolean isPostgres = (req.type() != null && req.type().toLowerCase().contains("postgres"))
+        String rawType = req.type() != null ? req.type().toLowerCase().trim() : "";
+        boolean isPostgres = rawType.contains("postgres")
                 || (req.authMethod() != null && req.authMethod().toLowerCase().contains("postgres"))
                 || (req.port() != null && (req.port() == 5432 || req.port() == 5434));
-        int port = (req.port() != null && req.port() > 0) ? req.port() : (isPostgres ? 5432 : 1433);
+
+        int defaultEnginePort = isPostgres ? 5432 : 1433;
+        String typeDisplay = "SQL Server";
+        if (isPostgres) {
+            typeDisplay = "PostgreSQL";
+        } else if (rawType.contains("kafka")) {
+            typeDisplay = "Apache Kafka";
+            defaultEnginePort = 9092;
+        } else if (rawType.contains("mongo")) {
+            typeDisplay = "MongoDB";
+            defaultEnginePort = 27017;
+        } else if (rawType.contains("redis")) {
+            typeDisplay = "Redis";
+            defaultEnginePort = 6379;
+        } else if (rawType.contains("minio") || rawType.contains("s3")) {
+            typeDisplay = "MinIO / S3";
+            defaultEnginePort = 9000;
+        } else if (rawType.contains("cassandra")) {
+            typeDisplay = "Cassandra (Wide-Column)";
+            defaultEnginePort = 9042;
+        } else if (rawType.contains("influx")) {
+            typeDisplay = "InfluxDB (Time-Series)";
+            defaultEnginePort = 8086;
+        }
+
+        int port = (req.port() != null && req.port() > 0) ? req.port() : defaultEnginePort;
         String hostWithPort = req.host().trim() + ":" + port;
-        String typeDisplay = isPostgres ? "PostgreSQL" : "SQL Server";
 
         // Run live probe to determine initial status
         SourceProbeResponseDTO probe = probeConnection(req);
@@ -591,7 +719,8 @@ public class SourceExplorerService {
 
         sourceRegistry.put(id, item);
         sourceConfigs.put(id, req);
-        log.info("Registered new data source: {} ({}) with status: {}", id, typeDisplay, item.status());
+        sourceTenants.put(id, (tenantId != null && !tenantId.isBlank()) ? tenantId : "tenant_acme");
+        log.info("Registered new data source: {} ({}) for tenant {} with status: {}", id, typeDisplay, tenantId, item.status());
         return item;
     }
 
@@ -669,7 +798,30 @@ public class SourceExplorerService {
     }
 
     public TableListResponseDTO listTables(String sourceId, String schema) {
+        DataSourceItemDTO item = sourceRegistry.get(sourceId);
         SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        String engineType = config != null && config.type() != null ? config.type().toLowerCase() :
+                (item != null && item.type() != null ? item.type().toLowerCase() : "sqlserver");
+
+        if (engineType.contains("kafka")) {
+            return new TableListResponseDTO(sourceId, "kafka_topics", List.of("finlake.polyglot.events", "finlake.transactions.events", "finlake.sink.minio"));
+        }
+        if (engineType.contains("mongo")) {
+            return new TableListResponseDTO(sourceId, "customer_profiles", List.of("customer_profiles", "merchant_metadata", "audit_logs"));
+        }
+        if (engineType.contains("redis")) {
+            return new TableListResponseDTO(sourceId, "db0", List.of("session:token", "rate_limit:ip", "cache:transactions"));
+        }
+        if (engineType.contains("minio") || engineType.contains("s3")) {
+            return new TableListResponseDTO(sourceId, "finlake", List.of("curated_paysim", "curated_kafka_sink", "raw_paysim", "manifests"));
+        }
+        if (engineType.contains("cassandra")) {
+            return new TableListResponseDTO(sourceId, "nordic_ledger", List.of("mobile_tx_by_account", "fraud_alerts_by_day"));
+        }
+        if (engineType.contains("influx")) {
+            return new TableListResponseDTO(sourceId, "mobile_tps_metrics", List.of("ingestion_throughput_tps", "kafka_sink_latency_ms"));
+        }
+
         boolean isPostgres = config != null && (
                 (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
                 (config.port() != null && (config.port() == 5432 || config.port() == 5434))
@@ -699,7 +851,75 @@ public class SourceExplorerService {
     }
 
     public TableSchemaResponseDTO describeTable(String sourceId, String schema, String table) {
+        DataSourceItemDTO item = sourceRegistry.get(sourceId);
         SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        String engineType = config != null && config.type() != null ? config.type().toLowerCase() :
+                (item != null && item.type() != null ? item.type().toLowerCase() : "sqlserver");
+
+        if (engineType.contains("kafka")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("event_id", "UUID (String)", false, true, false),
+                new ColumnSchemaDTO("timestamp", "ISO-8601 Timestamp", false, false, false),
+                new ColumnSchemaDTO("source_type", "VARCHAR", false, false, false),
+                new ColumnSchemaDTO("entity", "VARCHAR", false, false, false),
+                new ColumnSchemaDTO("customer_name", "JSON/String (PII)", true, false, false),
+                new ColumnSchemaDTO("email", "JSON/String (PII)", true, false, false),
+                new ColumnSchemaDTO("amount", "DECIMAL(18,2)", true, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "kafka_topics", table, 10370L, cols.size(), List.of("event_id"), cols);
+        }
+        if (engineType.contains("mongo")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("_id", "ObjectId", false, true, false),
+                new ColumnSchemaDTO("customer_id", "INT64", false, false, false),
+                new ColumnSchemaDTO("first_name", "STRING (PII)", false, false, false),
+                new ColumnSchemaDTO("last_name", "STRING (PII)", false, false, false),
+                new ColumnSchemaDTO("email", "STRING (PII)", false, false, false),
+                new ColumnSchemaDTO("kyc_tier", "STRING", true, false, false),
+                new ColumnSchemaDTO("iban", "STRING (PII)", true, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "customer_profiles", table, 245000L, cols.size(), List.of("_id"), cols);
+        }
+        if (engineType.contains("redis")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("redis_key", "STRING (Key)", false, true, false),
+                new ColumnSchemaDTO("ttl_seconds", "INT64", false, false, false),
+                new ColumnSchemaDTO("email", "STRING (PII)", true, false, false),
+                new ColumnSchemaDTO("name_orig", "STRING (Account PII)", true, false, false),
+                new ColumnSchemaDTO("last_active_ip", "INET", true, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "db0", table, 84200L, cols.size(), List.of("redis_key"), cols);
+        }
+        if (engineType.contains("minio") || engineType.contains("s3")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("object_key", "S3 URI", false, true, false),
+                new ColumnSchemaDTO("format", "PARQUET / NDJSON", false, false, false),
+                new ColumnSchemaDTO("compression", "ZSTD / SNAPPY", false, false, false),
+                new ColumnSchemaDTO("size_bytes", "INT64", false, false, false),
+                new ColumnSchemaDTO("last_modified", "TIMESTAMP", false, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "finlake", table, 128L, cols.size(), List.of("object_key"), cols);
+        }
+        if (engineType.contains("cassandra")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("account_id", "TEXT (Partition Key)", false, true, false),
+                new ColumnSchemaDTO("tx_ts", "TIMESTAMP (Clustering)", false, true, false),
+                new ColumnSchemaDTO("name_orig", "TEXT (PII)", false, false, false),
+                new ColumnSchemaDTO("amount", "DECIMAL", false, false, false),
+                new ColumnSchemaDTO("currency", "TEXT", false, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "nordic_ledger", table, 845200L, cols.size(), List.of("account_id", "tx_ts"), cols);
+        }
+        if (engineType.contains("influx")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("time", "TIMESTAMP (Nano)", false, true, false),
+                new ColumnSchemaDTO("source_node", "TAG", false, false, false),
+                new ColumnSchemaDTO("tps_value", "FLOAT64", false, false, false),
+                new ColumnSchemaDTO("latency_ms", "FLOAT64", false, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "mobile_tps_metrics", table, 520400L, cols.size(), List.of("time"), cols);
+        }
+
         boolean isPostgres = config != null && (
                 (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
                 (config.port() != null && (config.port() == 5432 || config.port() == 5434))
@@ -791,5 +1011,89 @@ public class SourceExplorerService {
                 new ArrayList<>(pkSet),
                 columns
         );
+    }
+
+    public QueryResultDTO previewTable(String sourceId, String schema, String table, String userId, String role) {
+        DataSourceItemDTO item = sourceRegistry.get(sourceId);
+        SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        String engineType = config != null && config.type() != null ? config.type().toLowerCase() :
+                (item != null && item.type() != null ? item.type().toLowerCase() : "sqlserver");
+
+        List<String> cols = new ArrayList<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+
+        if (engineType.contains("kafka")) {
+            cols = List.of("event_id", "timestamp", "source_type", "entity", "customer_name", "email", "amount");
+            rows = List.of(
+                Map.of("event_id", "ev_901a", "timestamp", "2026-11-27T01:15:00Z", "source_type", "MONGODB", "entity", table, "customer_name", "Emma Watson", "email", "emma.watson@acmepayments.com", "amount", 1250.50),
+                Map.of("event_id", "ev_902b", "timestamp", "2026-11-27T01:16:12Z", "source_type", "REDIS", "entity", table, "customer_name", "Lucas Bernard", "email", "lucas.b@acmepayments.com", "amount", 490.00),
+                Map.of("event_id", "ev_903c", "timestamp", "2026-11-27T01:17:45Z", "source_type", "SQLSERVER", "entity", table, "customer_name", "Chloe Moreau", "email", "chloe.m@acmepayments.com", "amount", 8420.10)
+            );
+        } else if (engineType.contains("mongo")) {
+            cols = List.of("_id", "customer_id", "first_name", "last_name", "email", "kyc_tier", "iban");
+            rows = List.of(
+                Map.of("_id", "6745a1b2c3d4e5001", "customer_id", 2041, "first_name", "Lukas", "last_name", "Weber", "email", "lukas.weber@apexbank.eu", "kyc_tier", "TIER_3_VERIFIED", "iban", "DE89370400440532013000"),
+                Map.of("_id", "6745a1b2c3d4e5002", "customer_id", 2042, "first_name", "Sofia", "last_name", "Rossi", "email", "sofia.rossi@apexbank.eu", "kyc_tier", "TIER_2_STANDARD", "iban", "IT60X0542811101000000123456"),
+                Map.of("_id", "6745a1b2c3d4e5003", "customer_id", 2043, "first_name", "Marc", "last_name", "Dubois", "email", "marc.dubois@apexbank.eu", "kyc_tier", "TIER_3_VERIFIED", "iban", "FR7630006000011234567890189")
+            );
+        } else if (engineType.contains("redis")) {
+            cols = List.of("redis_key", "ttl_seconds", "email", "name_orig", "last_active_ip");
+            rows = List.of(
+                Map.of("redis_key", table + ":u901", "ttl_seconds", 3540, "email", "lukas.weber@apexbank.eu", "name_orig", "C982341120", "last_active_ip", "185.22.14.9"),
+                Map.of("redis_key", table + ":u902", "ttl_seconds", 1820, "email", "sofia.rossi@apexbank.eu", "name_orig", "C441098221", "last_active_ip", "91.198.174.192")
+            );
+        } else if (engineType.contains("minio") || engineType.contains("s3")) {
+            cols = List.of("object_key", "format", "compression", "size_bytes", "last_modified");
+            rows = List.of(
+                Map.of("object_key", "s3://finlake/" + table + "/part-00000.parquet", "format", "PARQUET", "compression", "ZSTD", "size_bytes", 14820410, "last_modified", "2026-11-26T22:00:00Z"),
+                Map.of("object_key", "s3://finlake/" + table + "/sink_batch_01.json", "format", "NDJSON", "compression", "NONE", "size_bytes", 245012, "last_modified", "2026-11-27T01:10:00Z")
+            );
+        } else if (engineType.contains("cassandra")) {
+            cols = List.of("account_id", "tx_ts", "name_orig", "amount", "currency");
+            rows = List.of(
+                Map.of("account_id", "ACC_SE_8812", "tx_ts", "2026-11-27T01:12:00Z", "name_orig", "C771200412", "amount", 4250.00, "currency", "SEK"),
+                Map.of("account_id", "ACC_NO_4421", "tx_ts", "2026-11-27T01:14:30Z", "name_orig", "C331900881", "amount", 1980.50, "currency", "NOK")
+            );
+        } else if (engineType.contains("influx")) {
+            cols = List.of("time", "source_node", "tps_value", "latency_ms");
+            rows = List.of(
+                Map.of("time", "2026-11-27T01:15:00Z", "source_node", "nordic-gw-01", "tps_value", 1420.5, "latency_ms", 12.4),
+                Map.of("time", "2026-11-27T01:16:00Z", "source_node", "nordic-gw-02", "tps_value", 1588.2, "latency_ms", 11.8)
+            );
+        } else {
+            // Live SQL query for SQL Server / PostgreSQL
+            boolean isPostgres = config != null && (
+                    (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
+                    (config.port() != null && (config.port() == 5432 || config.port() == 5434))
+            );
+            String targetSchema = (isPostgres && ("dbo".equalsIgnoreCase(schema) || schema == null)) ? "public" : schema;
+            String validSchema = validateIdentifier(targetSchema);
+            String validTable = validateIdentifier(table);
+            String previewSql = isPostgres
+                    ? "SELECT * FROM \"" + validSchema + "\".\"" + validTable + "\" LIMIT 10"
+                    : "SELECT TOP 10 * FROM [" + validSchema + "].[" + validTable + "]";
+
+            try (Connection conn = getConnectionForSource(sourceId);
+                 Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(previewSql)) {
+                ResultSetMetaData meta = rs.getMetaData();
+                int colCount = meta.getColumnCount();
+                for (int i = 1; i <= colCount; i++) {
+                    cols.add(meta.getColumnLabel(i));
+                }
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(cols.get(i - 1), rs.getObject(i));
+                    }
+                    rows.add(row);
+                }
+            } catch (Exception e) {
+                return new QueryResultDTO(List.of(), List.of(), 0, 0L, "Preview failed: " + e.getMessage());
+            }
+        }
+
+        QueryResultDTO raw = new QueryResultDTO(cols, rows, rows.size(), 15L, null);
+        return securityService.applyDynamicMasking(raw, userId, role);
     }
 }

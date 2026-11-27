@@ -15,7 +15,7 @@ import {
   HelpCircle,
   ExternalLink
 } from "lucide-react";
-import { fetchSources, testSource, fetchTables, fetchTableSchema, DataSourceItem } from "@/lib/api";
+import { fetchSources, testSource, fetchTables, fetchTableSchema, fetchSourcePreview, getActiveTenantContext, DataSourceItem } from "@/lib/api";
 
 type FilterTab = "all" | "connected" | "failed" | "untested";
 
@@ -33,6 +33,8 @@ export default function DataSourcesPage() {
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [schemaInfo, setSchemaInfo] = useState<any>(null);
   const [loadingSchema, setLoadingSchema] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   const loadSources = () => {
     setLoading(true);
@@ -44,6 +46,8 @@ export default function DataSourcesPage() {
 
   useEffect(() => {
     loadSources();
+    window.addEventListener("finlake-session-changed", loadSources);
+    return () => window.removeEventListener("finlake-session-changed", loadSources);
   }, []);
 
   const handleTestSource = async (source: DataSourceItem) => {
@@ -80,13 +84,20 @@ export default function DataSourcesPage() {
   const handleSelectTable = async (sourceId: string, tableName: string) => {
     setSelectedTable(tableName);
     setLoadingSchema(true);
+    setLoadingPreview(true);
+    setPreviewData(null);
     try {
-      const res = await fetchTableSchema(sourceId, tableName);
+      const [res, prev] = await Promise.all([
+        fetchTableSchema(sourceId, tableName),
+        fetchSourcePreview(sourceId, tableName).catch(() => null),
+      ]);
       setSchemaInfo(res);
+      setPreviewData(prev);
     } catch (err) {
       console.error("Error fetching schema:", err);
     } finally {
       setLoadingSchema(false);
+      setLoadingPreview(false);
     }
   };
 
@@ -514,6 +525,53 @@ export default function DataSourcesPage() {
                         </table>
                       </div>
                     ) : null}
+
+                    {/* Live Data Preview with Anonymization */}
+                    <div className="mt-6 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h5 className="text-xs font-bold text-zinc-900 uppercase tracking-wider">
+                          Aperçu des Données ({getActiveTenantContext().userRole})
+                        </h5>
+                        <span className="text-[11px] font-mono text-zinc-500">
+                          {previewData?.rows ? `${previewData.rows.length} enregistrements` : ""}
+                        </span>
+                      </div>
+
+                      {loadingPreview ? (
+                        <div className="py-6 text-center text-xs text-zinc-400">
+                          Chargement des données...
+                        </div>
+                      ) : previewData?.error ? (
+                        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-mono">
+                          {previewData.error}
+                        </div>
+                      ) : previewData?.rows && previewData.rows.length > 0 ? (
+                        <div className="border border-zinc-200 rounded-lg overflow-x-auto">
+                          <table className="w-full text-left text-[11px] font-mono">
+                            <thead className="bg-zinc-50 border-b border-zinc-200 text-zinc-500">
+                              <tr>
+                                {previewData.columns.map((c: string) => (
+                                  <th key={c} className="py-2 px-3 whitespace-nowrap">{c}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-zinc-200 bg-white">
+                              {previewData.rows.map((r: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-zinc-50">
+                                  {previewData.columns.map((c: string) => (
+                                    <td key={c} className="py-2 px-3 text-zinc-800 whitespace-nowrap max-w-[180px] truncate">
+                                      {r[c] !== null && r[c] !== undefined ? String(r[c]) : "NULL"}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-zinc-400">Aucun aperçu disponible pour cette table.</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center py-16 text-zinc-400 text-xs">

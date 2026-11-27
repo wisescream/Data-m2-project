@@ -29,7 +29,9 @@ public class AuthService {
         userPasswords.put("alex.admin", "FinLake2026!");
         userPasswords.put("admin", "FinLake2026!");
         userPasswords.put("elena.engineer", "FinLake2026!");
+        userPasswords.put("marcus.owner", "FinLake2026!");
         userPasswords.put("nordic.lead", "FinLake2026!");
+        userPasswords.put("sven.analyst", "FinLake2026!");
         userPasswords.put("finlake.analyst", "FinLake2026!");
     }
 

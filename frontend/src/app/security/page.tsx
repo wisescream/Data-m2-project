@@ -24,20 +24,26 @@ import {
   fetchTenants, 
   fetchPersonas, 
   fetchAuditLogs, 
+  fetchAnonymizationPolicies,
+  updateAnonymizationPolicy,
   Tenant, 
   UserPersona, 
-  AuditLog 
+  AuditLog,
+  AnonymizationPolicyItem
 } from "@/lib/api";
 
 export default function SecurityGovernancePage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [personas, setPersonas] = useState<UserPersona[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [policies, setPolicies] = useState<AnonymizationPolicyItem[]>([]);
   const [activePersona, setActivePersona] = useState<UserPersona | null>(null);
   const [selectedTenantFilter, setSelectedTenantFilter] = useState("ALL");
   const [activeTab, setActiveTab] = useState<"tenants" | "rbac" | "audit">("tenants");
   const [loading, setLoading] = useState(true);
   const [refreshingAudit, setRefreshingAudit] = useState(false);
+  const [updatingPolicyId, setUpdatingPolicyId] = useState<string | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
 
   useEffect(() => {
     loadAllSecurityData();
@@ -46,14 +52,16 @@ export default function SecurityGovernancePage() {
   const loadAllSecurityData = async () => {
     setLoading(true);
     try {
-      const [tData, pData, aData] = await Promise.all([
+      const [tData, pData, aData, polData] = await Promise.all([
         fetchTenants(),
         fetchPersonas(),
-        fetchAuditLogs("ALL")
+        fetchAuditLogs("ALL"),
+        fetchAnonymizationPolicies("ALL").catch(() => [])
       ]);
       setTenants(tData);
       setPersonas(pData);
       setAuditLogs(aData);
+      setPolicies(polData);
 
       // Restore active persona from localStorage or default to Sarah (Analyst)
       const savedPersonaId = localStorage.getItem("finlake_active_persona");
@@ -71,6 +79,45 @@ export default function SecurityGovernancePage() {
   const handleSelectPersona = (p: UserPersona) => {
     setActivePersona(p);
     localStorage.setItem("finlake_active_persona", p.id);
+    const matchedTenant = tenants.find((t) => t.id === p.tenant_id);
+    localStorage.setItem("finlake_auth_session", JSON.stringify({
+      token: "switched_session",
+      user: {
+        id: p.id,
+        username: p.username,
+        full_name: p.full_name,
+        email: p.email,
+        role: p.role,
+        tenant_id: p.tenant_id,
+        tenant_name: matchedTenant?.name || p.tenant_id,
+        assigned_catalog: matchedTenant?.assigned_catalog || "hive",
+        assigned_schema: matchedTenant?.assigned_schema || "finlake_curated",
+        can_view_pii: p.can_view_pii,
+      }
+    }));
+    window.dispatchEvent(new Event("finlake-session-changed"));
+  };
+
+  const handleToggleAnonymization = async (targetUserId: string, nextAnonymize: boolean) => {
+    setUpdatingPolicyId(targetUserId);
+    setPolicyError(null);
+    try {
+      await updateAnonymizationPolicy(targetUserId, nextAnonymize);
+      const [polData, pData] = await Promise.all([
+        fetchAnonymizationPolicies("ALL"),
+        fetchPersonas()
+      ]);
+      setPolicies(polData);
+      setPersonas(pData);
+      if (activePersona) {
+        const updatedSelf = pData.find((p) => p.id === activePersona.id);
+        if (updatedSelf) handleSelectPersona(updatedSelf);
+      }
+    } catch (err: any) {
+      setPolicyError(err.message || "Permission denied");
+    } finally {
+      setUpdatingPolicyId(null);
+    }
   };
 
   const handleRefreshAudit = async () => {
@@ -346,6 +393,14 @@ export default function SecurityGovernancePage() {
                     <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Granted</td>
                   </tr>
                   <tr>
+                    <td className="py-3 px-4 font-bold text-zinc-900">DATA_OWNER</td>
+                    <td className="py-3 px-4">Company data ownership & anonymization policy control</td>
+                    <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">Full Access</span></td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                    <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
+                  </tr>
+                  <tr>
                     <td className="py-3 px-4 font-bold text-zinc-900">ADMIN</td>
                     <td className="py-3 px-4">Workspace provisioning & security</td>
                     <td className="py-3 px-4"><span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">Full Access</span></td>
@@ -353,6 +408,92 @@ export default function SecurityGovernancePage() {
                     <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
                     <td className="py-3 px-4 text-emerald-700 font-semibold">✓ Full Control</td>
                   </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Data Owner Live Anonymization Controls */}
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-purple-600" />
+                  Data Owner Anonymization Controls (Per-User Policy)
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Data Owners and Admins can dynamically anonymize or grant unmasked access to specific users in real time.
+                </p>
+              </div>
+              {activePersona && (activePersona.role === "DATA_OWNER" || activePersona.role === "ADMIN") ? (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold">
+                  ✓ Authorized ({activePersona.role})
+                </span>
+              ) : (
+                <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold">
+                  Read-Only (Switch to DATA_OWNER or ADMIN to edit)
+                </span>
+              )}
+            </div>
+
+            {policyError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                {policyError}
+              </div>
+            )}
+
+            <div className="overflow-x-auto rounded-xl border border-zinc-200">
+              <table className="w-full text-left text-xs text-zinc-700">
+                <thead className="bg-zinc-50 text-zinc-500 uppercase font-mono border-b border-zinc-200">
+                  <tr>
+                    <th className="py-2.5 px-4">User</th>
+                    <th className="py-2.5 px-4">Company</th>
+                    <th className="py-2.5 px-4">Role</th>
+                    <th className="py-2.5 px-4">PII State</th>
+                    <th className="py-2.5 px-4 text-right">Data Owner Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 bg-white">
+                  {policies.map((pol) => {
+                    const canEdit = activePersona?.role === "DATA_OWNER" || activePersona?.role === "ADMIN";
+                    return (
+                      <tr key={pol.user_id} className="hover:bg-zinc-50">
+                        <td className="py-2.5 px-4 font-semibold text-zinc-900">
+                          {pol.full_name} <span className="text-zinc-400 font-mono font-normal">({pol.username})</span>
+                        </td>
+                        <td className="py-2.5 px-4 font-mono text-zinc-600">{pol.tenant_id}</td>
+                        <td className="py-2.5 px-4 font-mono text-purple-700 font-semibold">{pol.role}</td>
+                        <td className="py-2.5 px-4">
+                          {pol.anonymized ? (
+                            <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-semibold">
+                              Anonymized (Masked)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                              Unmasked (Full Access)
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <button
+                            disabled={!canEdit || updatingPolicyId === pol.user_id}
+                            onClick={() => handleToggleAnonymization(pol.user_id, !pol.anonymized)}
+                            className={`px-3 py-1 rounded-lg text-xs font-semibold transition ${
+                              canEdit
+                                ? "bg-zinc-900 hover:bg-zinc-800 text-white shadow-xs"
+                                : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
+                            }`}
+                          >
+                            {updatingPolicyId === pol.user_id
+                              ? "Updating..."
+                              : pol.anonymized
+                              ? "Grant Unmasked Access"
+                              : "Force Anonymize"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

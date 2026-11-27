@@ -19,8 +19,10 @@ public class DataCatalogController {
     }
 
     @GetMapping("/tables")
-    public List<CatalogTableSummaryDTO> getAllTables() {
-        return catalogService.getAllTables();
+    public List<CatalogTableSummaryDTO> getAllTables(
+            @RequestParam(name = "tenant_id", required = false) String tenantId
+    ) {
+        return catalogService.getAllTables(tenantId);
     }
 
     @GetMapping("/tables/{tableId}")
@@ -31,8 +33,11 @@ public class DataCatalogController {
     }
 
     @GetMapping("/search")
-    public List<CatalogTableSummaryDTO> searchCatalog(@RequestParam(name = "q", defaultValue = "") String query) {
-        return catalogService.searchCatalog(query);
+    public List<CatalogTableSummaryDTO> searchCatalog(
+            @RequestParam(name = "q", defaultValue = "") String query,
+            @RequestParam(name = "tenant_id", required = false) String tenantId
+    ) {
+        return catalogService.searchCatalog(query, tenantId);
     }
 }
 

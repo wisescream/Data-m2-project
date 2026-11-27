@@ -38,9 +38,10 @@ public class JobController {
     @GetMapping
     public List<JobStatusResponseDTO> listJobs(
         @RequestParam(defaultValue = "50") int limit,
-        @RequestParam(defaultValue = "0") int offset
+        @RequestParam(defaultValue = "0") int offset,
+        @RequestParam(name = "tenant_id", required = false) String tenantId
     ) {
-        return jobService.listJobs(limit, offset);
+        return jobService.listJobs(limit, offset, tenantId);
     }
 
     @GetMapping("/{jobId}")

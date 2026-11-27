@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, RefreshCw, GitCommit, Layers, ArrowRight, ShieldCheck, Database } from "lucide-react";
-import { fetchIcebergMetadata, runTrinoQuery } from "@/lib/api";
+import { Clock, RefreshCw, GitCommit } from "lucide-react";
+import { fetchIcebergMetadata, runIcebergTimeTravel, getActiveTenantContext } from "@/lib/api";
 
 export default function IcebergPage() {
   const [icebergData, setIcebergData] = useState<any>(null);
@@ -10,14 +10,19 @@ export default function IcebergPage() {
   const [selectedSnapshot, setSelectedSnapshot] = useState<string>("");
   const [timeTravelResult, setTimeTravelResult] = useState<any>(null);
   const [traveling, setTraveling] = useState(false);
+  const [ctx, setCtx] = useState(getActiveTenantContext());
 
   const loadIceberg = async () => {
     setLoading(true);
+    setCtx(getActiveTenantContext());
+    setTimeTravelResult(null);
     try {
       const data = await fetchIcebergMetadata();
       setIcebergData(data);
       if (data.snapshots && data.snapshots.length > 0) {
         setSelectedSnapshot(String(data.snapshots[0].snapshot_id));
+      } else {
+        setSelectedSnapshot("");
       }
     } catch (e) {
       console.error("Error loading Iceberg metadata", e);
@@ -28,6 +33,8 @@ export default function IcebergPage() {
 
   useEffect(() => {
     loadIceberg();
+    window.addEventListener("finlake-session-changed", loadIceberg);
+    return () => window.removeEventListener("finlake-session-changed", loadIceberg);
   }, []);
 
   const runTimeTravel = async () => {
@@ -35,8 +42,7 @@ export default function IcebergPage() {
     setTraveling(true);
     setTimeTravelResult(null);
     try {
-      const sql = `SELECT COUNT(*) AS historical_rows, ROUND(SUM(amount), 2) AS historical_volume FROM iceberg.finlake_iceberg.transactions FOR VERSION AS OF ${selectedSnapshot}`;
-      const res = await runTrinoQuery(sql, "iceberg", "finlake_iceberg");
+      const res = await runIcebergTimeTravel(selectedSnapshot);
       setTimeTravelResult(res);
     } catch (e: any) {
       setTimeTravelResult({ error: e.message });
@@ -52,7 +58,7 @@ export default function IcebergPage() {
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
             <Clock className="h-6 w-6 text-amber-500" />
-            Apache Iceberg ACID Ledger & Time-Travel
+            Apache Iceberg ACID Ledger & Time-Travel ({ctx.tenantName})
           </h1>
           <p className="text-zinc-500 text-sm mt-1">
             Explore commit snapshots, transactional rollbacks, and historical point-in-time state.
@@ -72,8 +78,8 @@ export default function IcebergPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs">
           <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">Target Table</span>
-          <p className="text-base font-mono font-bold text-zinc-900 mt-2 truncate">iceberg.finlake_iceberg.transactions</p>
-          <p className="text-xs text-zinc-500 mt-1">Partitioned by simulated event_date</p>
+          <p className="text-base font-mono font-bold text-zinc-900 mt-2 truncate">{icebergData?.table_name || "iceberg.finlake_iceberg.transactions"}</p>
+          <p className="text-xs text-zinc-500 mt-1">Isolated Iceberg Namespace for {ctx.tenantName}</p>
         </div>
 
         <div className="bg-white border border-zinc-200 rounded-2xl p-5 shadow-xs">

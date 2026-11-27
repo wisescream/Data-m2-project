@@ -25,15 +25,38 @@ public class DataCatalogService {
     }
 
     public List<CatalogTableSummaryDTO> getAllTables() {
-        refreshCountsIfNeeded();
+        return getAllTables("tenant_acme");
+    }
 
+    public List<CatalogTableSummaryDTO> getAllTables(String tenantId) {
+        refreshCountsIfNeeded();
+        String t = (tenantId != null && !tenantId.isBlank()) ? tenantId.toLowerCase().trim() : "tenant_acme";
+
+        if ("tenant_apex".equals(t)) {
+            return List.of(
+                getApexRetailSummary(),
+                getApexMongoProfilesSummary(),
+                getApexRedisCacheSummary(),
+                getApexIcebergLedgerSummary()
+            );
+        }
+        if ("tenant_nordic".equals(t)) {
+            return List.of(
+                getNordicKafkaSummary(),
+                getNordicCassandraSummary(),
+                getNordicInfluxSummary(),
+                getNordicIcebergLedgerSummary()
+            );
+        }
+
+        // Default: tenant_acme (Acme Payments Global)
         List<CatalogTableSummaryDTO> tables = new ArrayList<>();
         tables.add(getCustomerSummary());
         tables.add(getInvoiceSummary());
         tables.add(getPaymentSummary());
         tables.add(getTransactionsSummary());
+        tables.add(getKafkaPolyglotSummary());
         tables.add(getIcebergSnapshotsSummary());
-
         return tables;
     }
 
@@ -45,18 +68,31 @@ public class DataCatalogService {
             case "invoice", "hive.finlake_curated.invoice" -> Optional.of(getInvoiceDetail());
             case "payment", "hive.finlake_curated.payment" -> Optional.of(getPaymentDetail());
             case "transactions", "hive.finlake_curated.transactions" -> Optional.of(getTransactionsDetail());
+            case "kafka_polyglot_events" -> Optional.of(getKafkaPolyglotDetail());
             case "iceberg_snapshots", "iceberg.finlake_iceberg.snapshots" -> Optional.of(getIcebergSnapshotsDetail());
+            case "apex_retail_transactions" -> Optional.of(getApexRetailDetail());
+            case "apex_mongo_profiles" -> Optional.of(getApexMongoProfilesDetail());
+            case "apex_redis_cache" -> Optional.of(getApexRedisCacheDetail());
+            case "apex_iceberg_ledger" -> Optional.of(getApexIcebergLedgerDetail());
+            case "nordic_kafka_events" -> Optional.of(getNordicKafkaDetail());
+            case "nordic_cassandra_tx" -> Optional.of(getNordicCassandraDetail());
+            case "nordic_influx_tps" -> Optional.of(getNordicInfluxDetail());
+            case "nordic_iceberg_ledger" -> Optional.of(getNordicIcebergLedgerDetail());
             default -> Optional.empty();
         };
     }
 
     public List<CatalogTableSummaryDTO> searchCatalog(String query) {
+        return searchCatalog(query, "tenant_acme");
+    }
+
+    public List<CatalogTableSummaryDTO> searchCatalog(String query, String tenantId) {
         if (query == null || query.isBlank()) {
-            return getAllTables();
+            return getAllTables(tenantId);
         }
 
         String q = query.toLowerCase(Locale.ROOT).trim();
-        List<CatalogTableSummaryDTO> all = getAllTables();
+        List<CatalogTableSummaryDTO> all = getAllTables(tenantId);
         List<CatalogTableSummaryDTO> results = new ArrayList<>();
 
         for (CatalogTableSummaryDTO table : all) {
@@ -361,6 +397,235 @@ public class DataCatalogService {
             queries,
             List.of("hive.finlake_curated.transactions"),
             List.of("Regulatory Audit Dashboards", "Time-Travel Repositories")
+        );
+    }
+
+    // --- Polyglot & Multi-Tenant Catalog Entries ---
+    private CatalogTableSummaryDTO getKafkaPolyglotSummary() {
+        return new CatalogTableSummaryDTO(
+            "kafka_polyglot_events", "kafka_polyglot_events", "hive", "finlake_curated",
+            "Event Streaming / Kafka Sink",
+            "Unified event stream ingested from heterogeneous sources via Kafka KRaft & MinIO S3 Sink Worker.",
+            "NDJSON / Parquet (ZSTD)", "MinIO S3 (curated/kafka_sink)", 10370L, 5, "Real-time", "Streaming",
+            List.of("Kafka", "S3 Sink", "Polyglot", "Streaming")
+        );
+    }
+
+    private CatalogTableDetailDTO getKafkaPolyglotDetail() {
+        return new CatalogTableDetailDTO(
+            getKafkaPolyglotSummary(),
+            List.of(
+                new CatalogColumnDTO("event_id", "VARCHAR", "Unique Kafka event UUID.", true, false, null, "SYSTEM_AUDIT", List.of("052222d4-ff2d")),
+                new CatalogColumnDTO("timestamp", "TIMESTAMP", "Event emission UTC timestamp.", false, false, null, "SYSTEM_AUDIT", List.of("2026-11-27T01:15:00Z")),
+                new CatalogColumnDTO("source_type", "VARCHAR", "Origin DB engine (MONGODB, REDIS, SQLSERVER).", false, false, null, "PUBLIC", List.of("MONGODB", "REDIS")),
+                new CatalogColumnDTO("entity", "VARCHAR", "Target entity/collection name.", false, false, null, "PUBLIC", List.of("customer_profile")),
+                new CatalogColumnDTO("data", "JSON", "Normalized event payload.", false, false, null, "PII", List.of("{\"customer_id\":104}"))
+            ),
+            List.of(new CatalogTableDetailDTO.SampleQueryDTO("Latest Kafka Sink Events", "SELECT * FROM hive.finlake_curated.transactions LIMIT 10", "Inspect streamed events.")),
+            List.of("kafka://finlake.polyglot.events"),
+            List.of("MinIO S3 Sink", "Trino Analytics")
+        );
+    }
+
+    private CatalogTableSummaryDTO getApexRetailSummary() {
+        return new CatalogTableSummaryDTO(
+            "apex_retail_transactions", "retail_banking_tx", "hive", "apex_eu_curated",
+            "Banking & Payments (PostgreSQL)",
+            "Curated EU retail banking transactions extracted from PostgreSQL 16 (retail_banking).",
+            "Apache Parquet (ZSTD)", "MinIO S3 (Apex EU Bucket)", 1482910L, 5, "Fresh (< 10m)", "Hourly",
+            List.of("PostgreSQL", "GDPR", "Retail Banking", "Apex EU")
+        );
+    }
+
+    private CatalogTableDetailDTO getApexRetailDetail() {
+        return new CatalogTableDetailDTO(
+            getApexRetailSummary(),
+            List.of(
+                new CatalogColumnDTO("tx_id", "BIGINT", "Primary transaction ID.", true, false, null, "SYSTEM_AUDIT", List.of("901244")),
+                new CatalogColumnDTO("account_iban", "VARCHAR", "Customer IBAN (GDPR PII).", false, false, null, "PII", List.of("DE893704****")),
+                new CatalogColumnDTO("amount_eur", "DECIMAL(18,2)", "Transaction amount in EUR.", false, false, null, "FINANCIAL", List.of("1240.50")),
+                new CatalogColumnDTO("merchant_city", "VARCHAR", "City of POS terminal.", false, false, null, "PUBLIC", List.of("Frankfurt", "Paris")),
+                new CatalogColumnDTO("created_at", "TIMESTAMP", "UTC settlement time.", false, false, null, "SYSTEM_AUDIT", List.of("2026-11-26 21:10:00"))
+            ),
+            List.of(new CatalogTableDetailDTO.SampleQueryDTO("EU Retail Volume", "SELECT payment_method, COUNT(*) AS cnt, ROUND(SUM(amount),2) AS total FROM hive.finlake_curated.payment GROUP BY payment_method", "Analyze EU payment methods.")),
+            List.of("postgresql://postgres-source:5432/retail_banking"),
+            List.of("Apex GDPR Reporting", "Trino EU Analytics")
+        );
+    }
+
+    private CatalogTableSummaryDTO getApexMongoProfilesSummary() {
+        return new CatalogTableSummaryDTO(
+            "apex_mongo_profiles", "customer_profiles", "hive", "apex_eu_curated",
+            "Document Store (MongoDB)",
+            "Semi-structured KYC customer profiles and merchant metadata ingested from MongoDB via Kafka Sink.",
+            "Apache Parquet (Snappy)", "MinIO S3 (Apex EU Bucket)", 245000L, 5, "Fresh (< 30m)", "Streaming",
+            List.of("MongoDB", "NoSQL", "Document", "KYC", "PII")
+        );
+    }
+
+    private CatalogTableDetailDTO getApexMongoProfilesDetail() {
+        return new CatalogTableDetailDTO(
+            getApexMongoProfilesSummary(),
+            List.of(
+                new CatalogColumnDTO("_id", "VARCHAR", "MongoDB BSON ObjectId.", true, false, null, "SYSTEM_AUDIT", List.of("6745a1b2c3d4e5001")),
+                new CatalogColumnDTO("first_name", "VARCHAR", "Customer first name (PII).", false, false, null, "PII", List.of("Lukas")),
+                new CatalogColumnDTO("last_name", "VARCHAR", "Customer last name (PII).", false, false, null, "PII", List.of("Weber")),
+                new CatalogColumnDTO("email", "VARCHAR", "Verified KYC email (PII).", false, false, null, "PII", List.of("lukas.weber@apexbank.eu")),
+                new CatalogColumnDTO("kyc_tier", "VARCHAR", "AML/KYC compliance tier.", false, false, null, "RISK_LABEL", List.of("TIER_3_VERIFIED"))
+            ),
+            List.of(new CatalogTableDetailDTO.SampleQueryDTO("KYC Profiles Sample", "SELECT customer_id, first_name, last_name, email, city FROM hive.finlake_curated.customer LIMIT 10", "Inspect KYC profiles with dynamic PII masking.")),
+            List.of("mongodb://mongo-cluster.corp.internal:27017/customer_profiles"),
+            List.of("Kafka MinIO S3 Sink", "AML Compliance")
+        );
+    }
+
+    private CatalogTableSummaryDTO getApexRedisCacheSummary() {
+        return new CatalogTableSummaryDTO(
+            "apex_redis_cache", "session_cache_snapshots", "hive", "apex_eu_curated",
+            "Key-Value Store (Redis)",
+            "In-memory authentication & rate-limit session snapshots streamed from Redis to MinIO.",
+            "Apache Parquet (ZSTD)", "MinIO S3 (Apex EU Bucket)", 84200L, 4, "Real-time", "Every 15m",
+            List.of("Redis", "Key-Value", "Sessions", "Security")
+        );
+    }
+
+    private CatalogTableDetailDTO getApexRedisCacheDetail() {
+        return new CatalogTableDetailDTO(
+            getApexRedisCacheSummary(),
+            List.of(
+                new CatalogColumnDTO("redis_key", "VARCHAR", "Redis keyspace identifier.", true, false, null, "SYSTEM_AUDIT", List.of("session:token:u901")),
+                new CatalogColumnDTO("ttl_seconds", "BIGINT", "Remaining key TTL.", false, false, null, "SYSTEM_AUDIT", List.of("3540")),
+                new CatalogColumnDTO("email", "VARCHAR", "Session owner email (PII).", false, false, null, "PII", List.of("lukas.weber@apexbank.eu")),
+                new CatalogColumnDTO("last_active_ip", "VARCHAR", "Client IPv4 address.", false, false, null, "PII", List.of("185.22.14.9"))
+            ),
+            List.of(new CatalogTableDetailDTO.SampleQueryDTO("Active Sessions", "SELECT * FROM hive.finlake_curated.customer LIMIT 5", "Inspect session metadata.")),
+            List.of("redis://redis-cache.corp.internal:6379/db0"),
+            List.of("Security Audit Ledger")
+        );
+    }
+
+    private CatalogTableSummaryDTO getApexIcebergLedgerSummary() {
+        return new CatalogTableSummaryDTO(
+            "apex_iceberg_ledger", "retail_ledger$snapshots", "iceberg", "apex_eu_iceberg",
+            "Lakehouse ACID Governance",
+            "Apex EU immutable Iceberg commit ledger for GDPR-compliant retail banking time-travel.",
+            "Apache Iceberg v2 Format", "MinIO S3 (Apex EU Iceberg)", 2965820L, 4, "Real-time", "On Commit",
+            List.of("Iceberg", "GDPR", "ACID", "Apex EU")
+        );
+    }
+
+    private CatalogTableDetailDTO getApexIcebergLedgerDetail() {
+        return new CatalogTableDetailDTO(
+            getApexIcebergLedgerSummary(),
+            List.of(
+                new CatalogColumnDTO("snapshot_id", "BIGINT", "Apex EU commit snapshot ID.", true, false, null, "SYSTEM_AUDIT", List.of("8921044190231")),
+                new CatalogColumnDTO("parent_id", "BIGINT", "Previous snapshot ID.", false, true, null, "SYSTEM_AUDIT", List.of("8921044190118")),
+                new CatalogColumnDTO("operation", "VARCHAR", "ACID operation.", false, false, null, "SYSTEM_AUDIT", List.of("append")),
+                new CatalogColumnDTO("committed_at", "TIMESTAMP", "Commit timestamp.", false, false, null, "SYSTEM_AUDIT", List.of("2026-11-26 22:14:05"))
+            ),
+            List.of(),
+            List.of("hive.apex_eu_curated.retail_banking_tx"),
+            List.of("GDPR Audit Dashboard")
+        );
+    }
+
+    private CatalogTableSummaryDTO getNordicKafkaSummary() {
+        return new CatalogTableSummaryDTO(
+            "nordic_kafka_events", "mobile_money_events", "hive", "nordic_curated",
+            "Event Streaming (Kafka KRaft)",
+            "Real-time Nordic mobile-money transfer events streamed via Kafka KRaft to MinIO Parquet.",
+            "Apache Parquet (ZSTD)", "MinIO S3 (Nordic Bucket)", 845200L, 4, "Real-time", "Streaming",
+            List.of("Kafka", "Mobile Money", "Nordic", "Streaming")
+        );
+    }
+
+    private CatalogTableDetailDTO getNordicKafkaDetail() {
+        return new CatalogTableDetailDTO(
+            getNordicKafkaSummary(),
+            List.of(
+                new CatalogColumnDTO("event_id", "VARCHAR", "Transfer event UUID.", true, false, null, "SYSTEM_AUDIT", List.of("nordic_ev_101")),
+                new CatalogColumnDTO("name_orig", "VARCHAR", "Sender wallet ID (PII).", false, false, null, "PII", List.of("C771200412")),
+                new CatalogColumnDTO("amount", "DECIMAL(18,2)", "Transfer amount (SEK/NOK).", false, false, null, "FINANCIAL", List.of("4250.00")),
+                new CatalogColumnDTO("is_fraud", "INTEGER", "Fraud risk flag.", false, false, null, "RISK_LABEL", List.of("0", "1"))
+            ),
+            List.of(new CatalogTableDetailDTO.SampleQueryDTO("Nordic Fraud Breakdown", "SELECT is_fraud, COUNT(*) AS cnt, ROUND(AVG(amount),2) AS avg_amt FROM hive.finlake_curated.transactions GROUP BY is_fraud", "Analyze fraud rates.")),
+            List.of("kafka://kafka:9092/finlake.transactions.events"),
+            List.of("Nordic Risk Engine")
+        );
+    }
+
+    private CatalogTableSummaryDTO getNordicCassandraSummary() {
+        return new CatalogTableSummaryDTO(
+            "nordic_cassandra_tx", "mobile_tx_by_account", "hive", "nordic_curated",
+            "Wide-Column Store (Cassandra)",
+            "High-throughput partitioned mobile-money ledger extracted from Apache Cassandra 4.1.",
+            "Apache Parquet (Snappy)", "MinIO S3 (Nordic Bucket)", 845200L, 4, "Fresh (< 1h)", "Daily",
+            List.of("Cassandra", "Wide-Column", "NoSQL", "Nordic")
+        );
+    }
+
+    private CatalogTableDetailDTO getNordicCassandraDetail() {
+        return new CatalogTableDetailDTO(
+            getNordicCassandraSummary(),
+            List.of(
+                new CatalogColumnDTO("account_id", "VARCHAR", "Partition key account.", true, false, null, "PII", List.of("ACC_SE_8812")),
+                new CatalogColumnDTO("tx_ts", "TIMESTAMP", "Clustering timestamp.", true, false, null, "SYSTEM_AUDIT", List.of("2026-11-27T01:12:00Z")),
+                new CatalogColumnDTO("amount", "DECIMAL(18,2)", "Transaction amount.", false, false, null, "FINANCIAL", List.of("4250.00")),
+                new CatalogColumnDTO("currency", "VARCHAR", "Nordic currency code.", false, false, null, "PUBLIC", List.of("SEK", "NOK"))
+            ),
+            List.of(),
+            List.of("cassandra://cassandra-nordic.corp.internal:9042/nordic_ledger"),
+            List.of("Nordic Iceberg Ledger")
+        );
+    }
+
+    private CatalogTableSummaryDTO getNordicInfluxSummary() {
+        return new CatalogTableSummaryDTO(
+            "nordic_influx_tps", "ingestion_throughput_tps", "hive", "nordic_curated",
+            "Time-Series (InfluxDB)",
+            "Gateway TPS & Kafka Sink latency telemetry archived from InfluxDB 2.7.",
+            "Apache Parquet (ZSTD)", "MinIO S3 (Nordic Bucket)", 520400L, 4, "Real-time", "Hourly",
+            List.of("InfluxDB", "Time-Series", "Telemetry", "OLAP")
+        );
+    }
+
+    private CatalogTableDetailDTO getNordicInfluxDetail() {
+        return new CatalogTableDetailDTO(
+            getNordicInfluxSummary(),
+            List.of(
+                new CatalogColumnDTO("time", "TIMESTAMP", "Nanosecond precision timestamp.", true, false, null, "SYSTEM_AUDIT", List.of("2026-11-27T01:15:00Z")),
+                new CatalogColumnDTO("source_node", "VARCHAR", "Gateway node tag.", false, false, null, "PUBLIC", List.of("nordic-gw-01")),
+                new CatalogColumnDTO("tps_value", "DOUBLE", "Transactions per second.", false, false, null, "PUBLIC", List.of("1420.5")),
+                new CatalogColumnDTO("latency_ms", "DOUBLE", "End-to-end sink latency.", false, false, null, "PUBLIC", List.of("12.4"))
+            ),
+            List.of(),
+            List.of("influxdb://influx-nordic.corp.internal:8086/mobile_tps_metrics"),
+            List.of("Platform SLA Monitoring")
+        );
+    }
+
+    private CatalogTableSummaryDTO getNordicIcebergLedgerSummary() {
+        return new CatalogTableSummaryDTO(
+            "nordic_iceberg_ledger", "mobile_money_ledger$snapshots", "iceberg", "nordic_iceberg",
+            "Lakehouse ACID Governance",
+            "Nordic Mobile Money immutable Iceberg snapshot log.",
+            "Apache Iceberg v2 Format", "MinIO S3 (Nordic Iceberg)", 1690400L, 4, "Real-time", "On Commit",
+            List.of("Iceberg", "ACID", "Nordic")
+        );
+    }
+
+    private CatalogTableDetailDTO getNordicIcebergLedgerDetail() {
+        return new CatalogTableDetailDTO(
+            getNordicIcebergLedgerSummary(),
+            List.of(
+                new CatalogColumnDTO("snapshot_id", "BIGINT", "Nordic commit snapshot ID.", true, false, null, "SYSTEM_AUDIT", List.of("4410293847102")),
+                new CatalogColumnDTO("parent_id", "BIGINT", "Previous snapshot ID.", false, true, null, "SYSTEM_AUDIT", List.of("4410293846880")),
+                new CatalogColumnDTO("operation", "VARCHAR", "ACID operation.", false, false, null, "SYSTEM_AUDIT", List.of("append")),
+                new CatalogColumnDTO("committed_at", "TIMESTAMP", "Commit timestamp.", false, false, null, "SYSTEM_AUDIT", List.of("2026-11-26 23:05:19"))
+            ),
+            List.of(),
+            List.of("hive.nordic_curated.mobile_money_events"),
+            List.of("Nordic Time Travel")
         );
     }
 }

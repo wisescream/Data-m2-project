@@ -49,9 +49,9 @@ public class AnalyticsController {
             req.maxRows() != null ? req.maxRows() : 1000
         );
 
-        // Apply Dynamic Data Masking based on active persona role
-        boolean maskingApplicable = "ANALYST".equalsIgnoreCase(userRole) || "DATA_ENGINEER".equalsIgnoreCase(userRole);
-        QueryResultDTO finalResult = securityService.applyDynamicMasking(rawResult, userRole);
+        // Apply Dynamic Data Masking based on Data Owner policy & active persona role
+        boolean maskingApplicable = securityService.shouldAnonymizeUser(userId, userRole);
+        QueryResultDTO finalResult = securityService.applyDynamicMasking(rawResult, userId, userRole);
 
         // Record Audit Trail in compliance ledger
         AuditLogDTO auditEntry = new AuditLogDTO(

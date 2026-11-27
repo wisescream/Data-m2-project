@@ -15,11 +15,37 @@ import {
   Clock,
   ExternalLink
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { getActiveTenantContext } from "@/lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [ctx, setCtx] = useState({
+    tenantId: "tenant_acme",
+    tenantName: "Acme Payments Global",
+    userId: "user_alex_admin",
+    userName: "Alex Chen",
+    userRole: "ADMIN",
+  });
+
+  useEffect(() => {
+    const syncCtx = () => setCtx(getActiveTenantContext());
+    syncCtx();
+    window.addEventListener("finlake-session-changed", syncCtx);
+    window.addEventListener("storage", syncCtx);
+    return () => {
+      window.removeEventListener("finlake-session-changed", syncCtx);
+      window.removeEventListener("storage", syncCtx);
+    };
+  }, [pathname]);
+
+  const initials = ctx.userName
+    .split(/\s+/)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2) || "FL";
 
   // Derive Wireframe Breadcrumbs
   const getBreadcrumbs = () => {
@@ -59,6 +85,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const primaryNav = [
+    { name: "Overview", href: "/", icon: Layers, isMain: false },
     { name: "Data Sources", href: "/sources", icon: Database, isMain: true },
     { name: "Source Explorer", href: "/sources?explorer=true", icon: SlidersHorizontal, isMain: false },
     { name: "Storage", href: "http://localhost:9001", icon: Box, external: true },
@@ -174,49 +201,59 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <header className="h-14 bg-white border-b border-zinc-200 px-8 flex items-center justify-between sticky top-0 z-20">
           <div>{getBreadcrumbs()}</div>
 
-          {/* User Profile Badge (Wireframe Top-Right: AK Amal Kettani) */}
-          <div className="relative">
-            <button
-              onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-              className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
-            >
-              <div className="h-7 w-7 rounded-full bg-zinc-200 border border-zinc-300 flex items-center justify-center text-xs font-semibold text-zinc-700">
-                AK
-              </div>
-              <span className="text-sm font-medium text-zinc-900">Amal Kettani</span>
-              <ChevronDown className="h-4 w-4 text-zinc-400" />
-            </button>
+          {/* Active Company & User Profile Badge */}
+          <div className="flex items-center gap-3">
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-xs font-medium text-zinc-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+              {ctx.tenantName}
+            </span>
 
-            {userDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-zinc-200 rounded-xl shadow-lg py-1.5 z-50 text-xs">
-                <div className="px-3 py-2 border-b border-zinc-100">
-                  <p className="font-semibold text-zinc-900">Amal Kettani</p>
-                  <p className="text-zinc-500">Platform Engineer</p>
+            <div className="relative">
+              <button
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-zinc-100 transition-colors"
+              >
+                <div className="h-7 w-7 rounded-full bg-zinc-900 text-white flex items-center justify-center text-xs font-semibold">
+                  {initials}
                 </div>
-                <Link
-                  href="/security"
-                  onClick={() => setUserDropdownOpen(false)}
-                  className="block px-3 py-2 text-zinc-700 hover:bg-zinc-50"
-                >
-                  Gestion Multi-Tenant
-                </Link>
-                <Link
-                  href="/analytics"
-                  onClick={() => setUserDropdownOpen(false)}
-                  className="block px-3 py-2 text-zinc-700 hover:bg-zinc-50"
-                >
-                  Console Analytique
-                </Link>
-                <div className="border-t border-zinc-100 my-1"></div>
-                <Link
-                  href="/login"
-                  onClick={() => setUserDropdownOpen(false)}
-                  className="block px-3 py-2 text-rose-600 hover:bg-rose-50"
-                >
-                  Changer de compte
-                </Link>
-              </div>
-            )}
+                <div className="text-left hidden md:block">
+                  <span className="text-sm font-medium text-zinc-900 block leading-tight">{ctx.userName}</span>
+                  <span className="text-[10px] font-mono text-zinc-500 block leading-tight">{ctx.userRole}</span>
+                </div>
+                <ChevronDown className="h-4 w-4 text-zinc-400" />
+              </button>
+
+              {userDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-zinc-200 rounded-xl shadow-lg py-1.5 z-50 text-xs">
+                  <div className="px-3 py-2 border-b border-zinc-100">
+                    <p className="font-semibold text-zinc-900">{ctx.userName}</p>
+                    <p className="text-zinc-500 font-mono text-[11px]">{ctx.userRole} · {ctx.tenantName}</p>
+                  </div>
+                  <Link
+                    href="/security"
+                    onClick={() => setUserDropdownOpen(false)}
+                    className="block px-3 py-2 text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Gestion Multi-Tenant & Anonymisation
+                  </Link>
+                  <Link
+                    href="/analytics"
+                    onClick={() => setUserDropdownOpen(false)}
+                    className="block px-3 py-2 text-zinc-700 hover:bg-zinc-50"
+                  >
+                    Console Analytique
+                  </Link>
+                  <div className="border-t border-zinc-100 my-1"></div>
+                  <Link
+                    href="/login"
+                    onClick={() => setUserDropdownOpen(false)}
+                    className="block px-3 py-2 text-rose-600 hover:bg-rose-50 font-medium"
+                  >
+                    Changer de compte / Entreprise
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

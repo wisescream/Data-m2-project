@@ -1,5 +1,66 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+export function getActiveTenantContext(): {
+  tenantId: string;
+  tenantName: string;
+  userId: string;
+  userName: string;
+  userRole: string;
+} {
+  if (typeof window === "undefined") {
+    return {
+      tenantId: "tenant_acme",
+      tenantName: "Acme Payments Global",
+      userId: "user_alex_admin",
+      userName: "Alex Chen",
+      userRole: "ADMIN",
+    };
+  }
+  try {
+    const rawSession = localStorage.getItem("finlake_auth_session");
+    if (rawSession) {
+      const parsed = JSON.parse(rawSession);
+      if (parsed?.user) {
+        return {
+          tenantId: parsed.user.tenant_id || "tenant_acme",
+          tenantName: parsed.user.tenant_name || "Acme Payments Global",
+          userId: parsed.user.id || "user_sarah_analyst",
+          userName: parsed.user.full_name || "Sarah Connor",
+          userRole: parsed.user.role || "ANALYST",
+        };
+      }
+    }
+    const personaId = localStorage.getItem("finlake_active_persona");
+    if (personaId === "user_elena_engineer") {
+      return { tenantId: "tenant_apex", tenantName: "Apex Retail Bank EU", userId: personaId, userName: "Elena Rostova", userRole: "DATA_ENGINEER" };
+    }
+    if (personaId === "user_marcus_owner") {
+      return { tenantId: "tenant_apex", tenantName: "Apex Retail Bank EU", userId: personaId, userName: "Marcus Vance", userRole: "DATA_OWNER" };
+    }
+    if (personaId === "user_nordic_owner") {
+      return { tenantId: "tenant_nordic", tenantName: "Nordic Mobile Money Ltd", userId: personaId, userName: "Astrid Lindqvist", userRole: "DATA_OWNER" };
+    }
+    if (personaId === "user_nordic_analyst") {
+      return { tenantId: "tenant_nordic", tenantName: "Nordic Mobile Money Ltd", userId: personaId, userName: "Sven Bergstrom", userRole: "ANALYST" };
+    }
+    if (personaId === "user_david_auditor") {
+      return { tenantId: "tenant_acme", tenantName: "Acme Payments Global", userId: personaId, userName: "David Miller", userRole: "AUDITOR" };
+    }
+    if (personaId === "user_alex_admin") {
+      return { tenantId: "tenant_acme", tenantName: "Acme Payments Global", userId: personaId, userName: "Alex Chen", userRole: "ADMIN" };
+    }
+  } catch (e) {
+    console.warn("Failed to read active tenant context", e);
+  }
+  return {
+    tenantId: "tenant_acme",
+    tenantName: "Acme Payments Global",
+    userId: "user_sarah_analyst",
+    userName: "Sarah Connor",
+    userRole: "ANALYST",
+  };
+}
+
 export async function fetchHealth() {
   const res = await fetch(`${API_BASE_URL}/health`, { cache: "no-store" });
   if (!res.ok) throw new Error("Health check failed");
@@ -7,7 +68,8 @@ export async function fetchHealth() {
 }
 
 export async function fetchStats() {
-  const res = await fetch(`${API_BASE_URL}/api/dashboard/stats`, { cache: "no-store" });
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/dashboard/stats?tenant_id=${encodeURIComponent(tenantId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch stats");
   return res.json();
 }
@@ -59,7 +121,8 @@ export interface SourceProbeResponse {
 }
 
 export async function fetchSources(): Promise<DataSourceItem[]> {
-  const res = await fetch(`${API_BASE_URL}/sources`, { cache: "no-store" });
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/sources?tenant_id=${encodeURIComponent(tenantId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch sources");
   return res.json();
 }
@@ -78,7 +141,8 @@ export async function probeSourceConnection(data: SourceProbeRequest): Promise<S
 }
 
 export async function registerSource(data: SourceProbeRequest): Promise<DataSourceItem> {
-  const res = await fetch(`${API_BASE_URL}/sources`, {
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/sources?tenant_id=${encodeURIComponent(tenantId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -108,10 +172,26 @@ export async function fetchTables(sourceId: string, schema = "dbo") {
 
 export async function fetchTableSchema(sourceId: string, table: string, schema = "dbo") {
   const res = await fetch(
-    `${API_BASE_URL}/sources/${sourceId}/tables/${table}/schema?schema=${schema}`,
+    `${API_BASE_URL}/sources/${sourceId}/tables/${encodeURIComponent(table)}/schema?schema=${encodeURIComponent(schema)}`,
     { cache: "no-store" }
   );
   if (!res.ok) throw new Error("Failed to fetch table schema");
+  return res.json();
+}
+
+export async function fetchSourcePreview(sourceId: string, table: string, schema = "dbo") {
+  const { userId, userRole } = getActiveTenantContext();
+  const res = await fetch(
+    `${API_BASE_URL}/sources/${sourceId}/tables/${encodeURIComponent(table)}/preview?schema=${encodeURIComponent(schema)}`,
+    {
+      cache: "no-store",
+      headers: {
+        "X-User-Id": userId,
+        "X-User-Role": userRole,
+      },
+    }
+  );
+  if (!res.ok) throw new Error("Failed to fetch source preview");
   return res.json();
 }
 
@@ -135,7 +215,8 @@ export async function submitJob(payload: {
 }
 
 export async function listJobs(limit = 50, offset = 0) {
-  const res = await fetch(`${API_BASE_URL}/storage/jobs?limit=${limit}&offset=${offset}`, {
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/storage/jobs?limit=${limit}&offset=${offset}&tenant_id=${encodeURIComponent(tenantId)}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to list jobs");
@@ -191,10 +272,21 @@ export async function generateSqlFromPrompt(prompt: string): Promise<{
 }
 
 export async function fetchIcebergMetadata() {
-  const res = await fetch(`${API_BASE_URL}/api/dashboard/iceberg`, {
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/dashboard/iceberg?tenant_id=${encodeURIComponent(tenantId)}`, {
     cache: "no-store",
   });
   if (!res.ok) throw new Error("Failed to fetch Iceberg metadata");
+  return res.json();
+}
+
+export async function runIcebergTimeTravel(snapshotId: string) {
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(
+    `${API_BASE_URL}/api/dashboard/iceberg/time-travel?tenant_id=${encodeURIComponent(tenantId)}&snapshot_id=${encodeURIComponent(snapshotId)}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) throw new Error("Failed to run time-travel query");
   return res.json();
 }
 
@@ -234,7 +326,8 @@ export interface CatalogTableDetail {
 }
 
 export async function fetchCatalogTables(): Promise<CatalogTableSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/api/catalog/tables`, { cache: "no-store" });
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/catalog/tables?tenant_id=${encodeURIComponent(tenantId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch catalog tables");
   return res.json();
 }
@@ -246,7 +339,8 @@ export async function fetchCatalogTableDetail(tableId: string): Promise<CatalogT
 }
 
 export async function searchCatalog(query: string): Promise<CatalogTableSummary[]> {
-  const res = await fetch(`${API_BASE_URL}/api/catalog/search?q=${encodeURIComponent(query)}`, { cache: "no-store" });
+  const { tenantId } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/catalog/search?q=${encodeURIComponent(query)}&tenant_id=${encodeURIComponent(tenantId)}`, { cache: "no-store" });
   if (!res.ok) throw new Error("Catalog search failed");
   return res.json();
 }
@@ -273,7 +367,7 @@ export interface UserPersona {
   full_name: string;
   email: string;
   tenant_id: string;
-  role: "ADMIN" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
+  role: "ADMIN" | "DATA_OWNER" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
   permissions: string[];
   can_view_pii: boolean;
   can_manage_pipelines: boolean;
@@ -314,6 +408,40 @@ export async function fetchAuditLogs(tenantId = "ALL"): Promise<AuditLog[]> {
   return res.json();
 }
 
+export interface AnonymizationPolicyItem {
+  user_id: string;
+  username: string;
+  full_name: string;
+  role: string;
+  tenant_id: string;
+  anonymized: boolean;
+}
+
+export async function fetchAnonymizationPolicies(tenantId?: string): Promise<AnonymizationPolicyItem[]> {
+  const targetTenant = tenantId || getActiveTenantContext().tenantId;
+  const res = await fetch(`${API_BASE_URL}/api/security/policies?tenant_id=${encodeURIComponent(targetTenant)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch anonymization policies");
+  const data = await res.json();
+  return data.policies || [];
+}
+
+export async function updateAnonymizationPolicy(targetUserId: string, anonymize: boolean) {
+  const { userRole } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/security/policies`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Role": userRole,
+    },
+    body: JSON.stringify({ target_user_id: targetUserId, anonymize }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to update anonymization policy");
+  }
+  return res.json();
+}
+
 // -----------------------------------------------------------------------------
 // Authentication
 // -----------------------------------------------------------------------------
@@ -325,7 +453,7 @@ export interface AuthSession {
     username: string;
     full_name: string;
     email: string;
-    role: "ADMIN" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
+    role: "ADMIN" | "DATA_OWNER" | "DATA_ENGINEER" | "ANALYST" | "AUDITOR";
     tenant_id: string;
     tenant_name: string;
     assigned_catalog: string;

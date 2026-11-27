@@ -20,13 +20,18 @@ public class SourceController {
     }
 
     @GetMapping
-    public List<DataSourceItemDTO> listSources() {
-        return explorerService.listConfiguredSources();
+    public List<DataSourceItemDTO> listSources(
+            @RequestParam(name = "tenant_id", required = false) String tenantId
+    ) {
+        return explorerService.listConfiguredSources(tenantId);
     }
 
     @PostMapping
-    public ResponseEntity<DataSourceItemDTO> registerSource(@Valid @RequestBody SourceProbeRequestDTO request) {
-        DataSourceItemDTO item = explorerService.registerSource(request);
+    public ResponseEntity<DataSourceItemDTO> registerSource(
+            @Valid @RequestBody SourceProbeRequestDTO request,
+            @RequestParam(name = "tenant_id", required = false) String tenantId
+    ) {
+        DataSourceItemDTO item = explorerService.registerSource(request, tenantId);
         return ResponseEntity.status(HttpStatus.CREATED).body(item);
     }
 
@@ -63,6 +68,22 @@ public class SourceController {
     ) {
         try {
             TableSchemaResponseDTO dto = explorerService.describeTable(sourceId, schema, table);
+            return ResponseEntity.ok(dto);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    @GetMapping("/{sourceId}/tables/{table}/preview")
+    public ResponseEntity<QueryResultDTO> previewTable(
+            @PathVariable String sourceId,
+            @PathVariable String table,
+            @RequestParam(defaultValue = "dbo") String schema,
+            @RequestHeader(name = "X-User-Id", required = false) String userId,
+            @RequestHeader(name = "X-User-Role", defaultValue = "ANALYST") String userRole
+    ) {
+        try {
+            QueryResultDTO dto = explorerService.previewTable(sourceId, schema, table, userId, userRole);
             return ResponseEntity.ok(dto);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().build();
