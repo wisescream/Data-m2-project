@@ -26,10 +26,13 @@ import {
   fetchAuditLogs, 
   fetchAnonymizationPolicies,
   updateAnonymizationPolicy,
+  fetchAnonymizationColumns,
+  updateCustomAnonymizationColumns,
   Tenant, 
   UserPersona, 
   AuditLog,
-  AnonymizationPolicyItem
+  AnonymizationPolicyItem,
+  ColumnAnonymizationConfig
 } from "@/lib/api";
 
 export default function SecurityGovernancePage() {
@@ -37,6 +40,13 @@ export default function SecurityGovernancePage() {
   const [personas, setPersonas] = useState<UserPersona[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [policies, setPolicies] = useState<AnonymizationPolicyItem[]>([]);
+  const [colConfig, setColConfig] = useState<ColumnAnonymizationConfig>({
+    auto_detected_columns: ["email", "first_name", "last_name", "customer_name", "name", "name_orig", "name_dest", "iban"],
+    suggested_columns: ["amount", "oldbalance_org", "newbalance_orig", "country", "city", "risk_score", "kyc_status", "ip_address", "device_id", "card_last4", "balance", "type"],
+    custom_columns: [],
+  });
+  const [customColInput, setCustomColInput] = useState("");
+  const [savingColumns, setSavingColumns] = useState(false);
   const [activePersona, setActivePersona] = useState<UserPersona | null>(null);
   const [selectedTenantFilter, setSelectedTenantFilter] = useState("ALL");
   const [activeTab, setActiveTab] = useState<"tenants" | "rbac" | "audit">("tenants");
@@ -52,16 +62,18 @@ export default function SecurityGovernancePage() {
   const loadAllSecurityData = async () => {
     setLoading(true);
     try {
-      const [tData, pData, aData, polData] = await Promise.all([
+      const [tData, pData, aData, polData, colData] = await Promise.all([
         fetchTenants(),
         fetchPersonas(),
         fetchAuditLogs("ALL"),
-        fetchAnonymizationPolicies("ALL").catch(() => [])
+        fetchAnonymizationPolicies("ALL").catch(() => []),
+        fetchAnonymizationColumns().catch(() => null),
       ]);
       setTenants(tData);
       setPersonas(pData);
       setAuditLogs(aData);
       setPolicies(polData);
+      if (colData) setColConfig(colData);
 
       // Restore active persona from localStorage or default to Sarah (Analyst)
       const savedPersonaId = localStorage.getItem("finlake_active_persona");
@@ -118,6 +130,35 @@ export default function SecurityGovernancePage() {
     } finally {
       setUpdatingPolicyId(null);
     }
+  };
+
+  const handleToggleCustomColumn = async (col: string) => {
+    const normalized = col.trim().toLowerCase();
+    if (!normalized) return;
+    setSavingColumns(true);
+    setPolicyError(null);
+    try {
+      const exists = colConfig.custom_columns.includes(normalized);
+      const next = exists
+        ? colConfig.custom_columns.filter((c) => c !== normalized)
+        : [...colConfig.custom_columns, normalized];
+      const updated = await updateCustomAnonymizationColumns(next);
+      setColConfig(updated);
+    } catch (err: any) {
+      setPolicyError(err.message || "Failed to update custom columns");
+    } finally {
+      setSavingColumns(false);
+    }
+  };
+
+  const handleAddCustomColumn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const normalized = customColInput.trim().toLowerCase();
+    if (!normalized) return;
+    if (!colConfig.custom_columns.includes(normalized)) {
+      await handleToggleCustomColumn(normalized);
+    }
+    setCustomColInput("");
   };
 
   const handleRefreshAudit = async () => {
@@ -496,6 +537,90 @@ export default function SecurityGovernancePage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          </div>
+
+          {/* Custom Column Anonymization Controls */}
+          <div className="bg-white border border-zinc-200 rounded-2xl p-6 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+                  <EyeOff className="h-5 w-5 text-rose-600" />
+                  Column-Level Anonymization Rules (Auto + Admin Custom Selection)
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Auto-detected PII columns are always masked for anonymized users. Admins &amp; Data Owners can select additional columns below.
+                </p>
+              </div>
+              {savingColumns && (
+                <span className="text-xs font-mono text-zinc-500">Saving...</span>
+              )}
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 block mb-1.5">
+                  Auto-Detected PII Columns (Always Active)
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {colConfig.auto_detected_columns.map((col) => (
+                    <span
+                      key={col}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 text-xs font-mono text-zinc-700 flex items-center gap-1"
+                    >
+                      <Lock className="h-3 w-3 text-zinc-500" />
+                      {col}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 block mb-1.5">
+                  Additional Selectable Columns (Click to Toggle Anonymization)
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {Array.from(new Set([...colConfig.suggested_columns, ...colConfig.custom_columns])).map((col) => {
+                    const isSelected = colConfig.custom_columns.includes(col);
+                    const canEdit = activePersona?.role === "DATA_OWNER" || activePersona?.role === "ADMIN";
+                    return (
+                      <button
+                        key={col}
+                        type="button"
+                        disabled={!canEdit || savingColumns}
+                        onClick={() => handleToggleCustomColumn(col)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition border flex items-center gap-1.5 ${
+                          isSelected
+                            ? "bg-rose-50 border-rose-300 text-rose-700 shadow-2xs"
+                            : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                        } ${!canEdit ? "opacity-60 cursor-not-allowed" : ""}`}
+                      >
+                        {isSelected ? <Check className="h-3.5 w-3.5 text-rose-600" /> : <Eye className="h-3.5 w-3.5 text-zinc-400" />}
+                        {col}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {(activePersona?.role === "DATA_OWNER" || activePersona?.role === "ADMIN") && (
+                <form onSubmit={handleAddCustomColumn} className="flex items-center gap-2 pt-1 max-w-md">
+                  <input
+                    type="text"
+                    value={customColInput}
+                    onChange={(e) => setCustomColInput(e.target.value)}
+                    placeholder="Add custom column name (e.g. phone, tax_id)..."
+                    className="flex-1 bg-white border border-zinc-200 rounded-xl px-3 py-1.5 text-xs font-mono text-zinc-900 focus:outline-none focus:border-zinc-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingColumns || !customColInput.trim()}
+                    className="px-3.5 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold transition disabled:opacity-50"
+                  >
+                    + Add Column
+                  </button>
+                </form>
+              )}
             </div>
           </div>
 

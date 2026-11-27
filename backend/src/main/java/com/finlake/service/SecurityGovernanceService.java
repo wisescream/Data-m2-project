@@ -28,6 +28,16 @@ public class SecurityGovernanceService {
     private final List<AuditLogDTO> auditLedger = new CopyOnWriteArrayList<>();
     // Data Owner anonymization overrides: userId -> true (anonymized) / false (unmasked)
     private final Map<String, Boolean> userAnonymizationPolicies = new ConcurrentHashMap<>();
+    // Admin/Data Owner custom column anonymization (in addition to auto-detected PII columns)
+    private final Set<String> customAnonymizedColumns = ConcurrentHashMap.newKeySet();
+
+    private static final List<String> AUTO_PII_COLUMNS = List.of(
+        "email", "first_name", "last_name", "customer_name", "name", "name_orig", "name_dest", "iban"
+    );
+    private static final List<String> SUGGESTED_EXTRA_COLUMNS = List.of(
+        "amount", "oldbalance_org", "newbalance_orig", "country", "city",
+        "risk_score", "kyc_status", "ip_address", "device_id", "card_last4", "balance", "type"
+    );
 
     public SecurityGovernanceService() {
         initTenantsAndPersonas();
@@ -277,6 +287,37 @@ public class SecurityGovernanceService {
         );
     }
 
+    public Map<String, Object> getColumnAnonymizationConfig() {
+        List<String> customList = customAnonymizedColumns.stream().sorted().toList();
+        return Map.of(
+            "auto_detected_columns", AUTO_PII_COLUMNS,
+            "suggested_columns", SUGGESTED_EXTRA_COLUMNS,
+            "custom_columns", customList
+        );
+    }
+
+    public Map<String, Object> updateCustomAnonymizedColumns(List<String> columns, String requesterRole) {
+        if (!"DATA_OWNER".equalsIgnoreCase(requesterRole) && !"ADMIN".equalsIgnoreCase(requesterRole)) {
+            throw new SecurityException("Access denied: Only DATA_OWNER or ADMIN can modify column anonymization.");
+        }
+        customAnonymizedColumns.clear();
+        if (columns != null) {
+            for (String col : columns) {
+                if (col != null && !col.isBlank()) {
+                    customAnonymizedColumns.add(col.trim().toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        List<String> sorted = customAnonymizedColumns.stream().sorted().toList();
+        log.info("Admin/Data Owner ({}) updated custom anonymized columns: {}", requesterRole, sorted);
+        return Map.of(
+            "status", "UPDATED",
+            "auto_detected_columns", AUTO_PII_COLUMNS,
+            "suggested_columns", SUGGESTED_EXTRA_COLUMNS,
+            "custom_columns", sorted
+        );
+    }
+
     public boolean shouldAnonymizeUser(String userId, String role) {
         if (userId != null && userAnonymizationPolicies.containsKey(userId)) {
             return userAnonymizationPolicies.get(userId);
@@ -349,6 +390,10 @@ public class SecurityGovernanceService {
                 else if (key.contains("name_orig") || key.contains("name_dest") || key.contains("iban")) {
                     newRow.put(entry.getKey(), maskAccount(strVal));
                 }
+                // Mask Admin/Data Owner custom selected columns
+                else if (customAnonymizedColumns.contains(key)) {
+                    newRow.put(entry.getKey(), maskCustomValue(strVal));
+                }
             }
             maskedRows.add(newRow);
         }
@@ -388,5 +433,11 @@ public class SecurityGovernanceService {
     private String maskAccount(String account) {
         if (account.length() <= 4) return "****";
         return account.substring(0, 4) + "****";
+    }
+
+    private String maskCustomValue(String value) {
+        if (value == null || value.isEmpty()) return "***";
+        if (value.length() <= 2) return "***";
+        return value.charAt(0) + "***";
     }
 }

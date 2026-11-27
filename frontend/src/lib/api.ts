@@ -442,6 +442,35 @@ export async function updateAnonymizationPolicy(targetUserId: string, anonymize:
   return res.json();
 }
 
+export interface ColumnAnonymizationConfig {
+  auto_detected_columns: string[];
+  suggested_columns: string[];
+  custom_columns: string[];
+}
+
+export async function fetchAnonymizationColumns(): Promise<ColumnAnonymizationConfig> {
+  const res = await fetch(`${API_BASE_URL}/api/security/columns`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch anonymization columns");
+  return res.json();
+}
+
+export async function updateCustomAnonymizationColumns(columns: string[]): Promise<ColumnAnonymizationConfig> {
+  const { userRole } = getActiveTenantContext();
+  const res = await fetch(`${API_BASE_URL}/api/security/columns`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Role": userRole,
+    },
+    body: JSON.stringify({ columns }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Failed to update custom anonymization columns");
+  }
+  return res.json();
+}
+
 // -----------------------------------------------------------------------------
 // Authentication
 // -----------------------------------------------------------------------------

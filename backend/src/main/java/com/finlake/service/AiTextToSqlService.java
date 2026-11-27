@@ -100,6 +100,7 @@ public class AiTextToSqlService {
             - Fully qualify table names with catalog and schema (e.g. hive.finlake_curated.customer).
             - When joining customer, invoice, and payment, join customer.customer_id = invoice.customer_id and invoice.invoice_id = payment.invoice_id.
             - For aggregations (COUNT, SUM, AVG), always provide meaningful aliases (e.g. total_volume, count).
+            - Always include a small LIMIT (e.g. LIMIT 10) on non-aggregated SELECT queries so results stay concise in table view.
             - Do not include markdown code blocks or backticks. Return raw JSON only.
             """;
 
@@ -158,6 +159,19 @@ public class AiTextToSqlService {
     }
 
     private TextToSqlResponseDTO resolveSemanticQuery(String lower, String rawPrompt) {
+        // 0. Table Row Counts / Scale Demo (must run before customer/invoice/payment join rules)
+        if (lower.contains("count") && (lower.contains("row") || lower.contains("ligne") || lower.contains("combien") || lower.contains("table") || lower.contains("scale"))) {
+            return new TextToSqlResponseDTO(
+                "SELECT 'transactions' AS table_name, COUNT(*) AS total_rows FROM hive.finlake_curated.transactions UNION ALL SELECT 'customer', COUNT(*) FROM hive.finlake_curated.customer UNION ALL SELECT 'invoice', COUNT(*) FROM hive.finlake_curated.invoice UNION ALL SELECT 'payment', COUNT(*) FROM hive.finlake_curated.payment",
+                "Computed exact row counts across all curated Hive/Parquet tables using Parquet metadata to demonstrate Lakehouse scale in a concise table.",
+                "hive",
+                "finlake_curated",
+                "table",
+                null,
+                null
+            );
+        }
+
         // 1. Payment Methods analysis
         if (lower.contains("payment") && (lower.contains("method") || lower.contains("mode") || lower.contains("settle") || lower.contains("by method"))) {
             return new TextToSqlResponseDTO(
@@ -281,7 +295,7 @@ public class AiTextToSqlService {
         // 9. Apache Iceberg ACID Metadata & Snapshots
         if (lower.contains("iceberg") || lower.contains("snapshot") || lower.contains("audit") || lower.contains("history") || lower.contains("commit") || lower.contains("time travel")) {
             return new TextToSqlResponseDTO(
-                "SELECT snapshot_id, parent_id, operation, committed_at FROM iceberg.finlake_iceberg.\"transactions$snapshots\" ORDER BY committed_at DESC LIMIT 15",
+                "SELECT snapshot_id, parent_id, operation, committed_at FROM iceberg.finlake_iceberg.\"transactions$snapshots\" ORDER BY committed_at DESC LIMIT 10",
                 "Queried Apache Iceberg metadata system table to inspect committed snapshot lineage and audit historical state mutations.",
                 "iceberg",
                 "finlake_iceberg",
@@ -292,7 +306,7 @@ public class AiTextToSqlService {
         }
 
         // 10. General Transactions fallback
-        int limit = extractLimit(lower, 20);
+        int limit = extractLimit(lower, 10);
         return new TextToSqlResponseDTO(
             "SELECT step, type, amount, name_orig, name_dest, is_fraud FROM hive.finlake_curated.transactions ORDER BY amount DESC LIMIT " + limit,
             "Interpreted natural language prompt as high-value transaction exploration, returning top records from the curated transactions table.",

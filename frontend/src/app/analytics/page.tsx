@@ -79,6 +79,12 @@ const PRESET_QUERIES = [
     sql: "SELECT type, COUNT(*) AS tx_count, ROUND(SUM(amount), 2) AS total_amount, ROUND(AVG(amount), 2) AS avg_amount FROM hive.finlake_curated.transactions GROUP BY type ORDER BY total_amount DESC",
   },
   {
+    title: "Table Row Counts (Scale Demo)",
+    catalog: "hive",
+    schema: "finlake_curated",
+    sql: "SELECT 'transactions' AS table_name, COUNT(*) AS total_rows FROM hive.finlake_curated.transactions UNION ALL SELECT 'customer', COUNT(*) FROM hive.finlake_curated.customer UNION ALL SELECT 'invoice', COUNT(*) FROM hive.finlake_curated.invoice UNION ALL SELECT 'payment', COUNT(*) FROM hive.finlake_curated.payment",
+  },
+  {
     title: "Iceberg Snapshots Audit Log",
     catalog: "iceberg",
     schema: "finlake_iceberg",
@@ -278,22 +284,25 @@ export default function AnalyticsPage() {
     return { tenantId: ctx.tenantId, userRole: ctx.userRole, userId: ctx.userId, userName: ctx.userName };
   };
 
-  const handleRunQuery = async () => {
-    if (!sql.trim()) return;
+  const handleRunQuery = async (overrideSql?: unknown, overrideCatalog?: string, overrideSchema?: string) => {
+    const querySql = (typeof overrideSql === "string" ? overrideSql : sql).trim();
+    const queryCatalog = overrideCatalog ?? catalog;
+    const querySchema = overrideSchema ?? schema;
+    if (!querySql) return;
     setExecuting(true);
     setResult(null);
     const start = Date.now();
     const secContext = getSecurityContext();
 
     try {
-      const data = await runTrinoQuery(sql, catalog, schema, 1000, secContext);
+      const data = await runTrinoQuery(querySql, queryCatalog, querySchema, 1000, secContext);
       setResult(data);
 
       const newHistItem: HistoryItem = {
         id: "hist_" + Date.now(),
-        sql: sql.trim(),
-        catalog,
-        schema,
+        sql: querySql,
+        catalog: queryCatalog,
+        schema: querySchema,
         executedAt: new Date().toLocaleTimeString(),
         rowCount: data.rows ? data.rows.length : 0,
         durationMs: data.execution_time_ms || (Date.now() - start),
@@ -306,9 +315,9 @@ export default function AnalyticsPage() {
 
       const newHistItem: HistoryItem = {
         id: "hist_" + Date.now(),
-        sql: sql.trim(),
-        catalog,
-        schema,
+        sql: querySql,
+        catalog: queryCatalog,
+        schema: querySchema,
         executedAt: new Date().toLocaleTimeString(),
         rowCount: 0,
         durationMs: Date.now() - start,
@@ -324,6 +333,7 @@ export default function AnalyticsPage() {
     setCatalog(preset.catalog);
     setSchema(preset.schema);
     setSql(preset.sql);
+    handleRunQuery(preset.sql, preset.catalog, preset.schema);
   };
 
   const handleAskAi = async (promptOverride?: string) => {
@@ -547,6 +557,7 @@ export default function AnalyticsPage() {
         <div className="flex flex-wrap items-center gap-1.5 pt-1">
           <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider mr-1">Suggestions:</span>
           {[
+            { label: "🔢 Row Count (Scale Demo)", prompt: "Count total rows across transactions, customer, invoice and payment tables" },
             { label: "💳 Payments by Method", prompt: "Show payment volume and count by payment method" },
             { label: "🏙️ Top Cities by Revenue", prompt: "Find top 10 cities by total invoiced revenue" },
             { label: "🚨 Fraud Rate Breakdown", prompt: "Analyze fraud vs legitimate transactions volume" },
@@ -702,8 +713,8 @@ export default function AnalyticsPage() {
                 onChange={(e) => setCatalog(e.target.value)}
                 className="bg-white border border-zinc-200 rounded-lg px-2.5 py-1 text-xs text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
               >
-                <option value="hive">hive (MinIO External)</option>
-                <option value="iceberg">iceberg (ACID Lakehouse)</option>
+                <option value="hive">hive (MinIO External • OLAP Parquet)</option>
+                <option value="iceberg">iceberg (ACID Lakehouse • OLAP)</option>
                 <option value="federated">federated (Multi-DB Cross-JOIN)</option>
                 <option value="postgresql">postgresql (Retail Banking)</option>
                 <option value="mongodb">mongodb (Document Store)</option>
