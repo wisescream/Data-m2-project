@@ -84,6 +84,42 @@ const PRESET_QUERIES = [
     schema: "finlake_iceberg",
     sql: 'SELECT snapshot_id, parent_id, operation, committed_at FROM iceberg.finlake_iceberg."transactions$snapshots" ORDER BY committed_at DESC',
   },
+  {
+    title: "Cross-DB Federated JOIN: PostgreSQL + MongoDB KYC",
+    catalog: "federated",
+    schema: "public",
+    sql: "SELECT * FROM postgresql.public.transactions p JOIN mongodb.customer_profiles.customer_profiles m ON p.customer_id = m.customer_id",
+  },
+  {
+    title: "Cross-DB Federated JOIN: SQL Server + Kafka Events",
+    catalog: "federated",
+    schema: "dbo",
+    sql: "SELECT * FROM hive.finlake_curated.Customer c JOIN kafka.finlake_polyglot.events k ON c.email = k.email",
+  },
+  {
+    title: "MongoDB Document Store: Customer Profiles",
+    catalog: "mongodb",
+    schema: "customer_profiles",
+    sql: "SELECT _id, customer_id, first_name, last_name, email, kyc_tier, iban FROM mongodb.customer_profiles.customer_profiles",
+  },
+  {
+    title: "Redis Key-Value Store: Active Sessions",
+    catalog: "redis",
+    schema: "db0",
+    sql: "SELECT redis_key, ttl_seconds, email, name_orig, last_active_ip FROM redis.db0.session_token",
+  },
+  {
+    title: "Cassandra Wide-Column: Nordic Mobile Ledger",
+    catalog: "cassandra",
+    schema: "nordic_ledger",
+    sql: "SELECT account_id, tx_ts, name_orig, amount, currency FROM cassandra.nordic_ledger.mobile_tx_by_account",
+  },
+  {
+    title: "InfluxDB Time-Series: Gateway TPS & Latency",
+    catalog: "influxdb",
+    schema: "mobile_tps_metrics",
+    sql: "SELECT time, source_node, tps_value, latency_ms FROM influxdb.mobile_tps_metrics.ingestion_throughput_tps",
+  },
 ];
 
 const CHART_COLORS = [
@@ -662,6 +698,14 @@ export default function AnalyticsPage() {
               >
                 <option value="hive">hive (MinIO External)</option>
                 <option value="iceberg">iceberg (ACID Lakehouse)</option>
+                <option value="federated">federated (Multi-DB Cross-JOIN)</option>
+                <option value="postgresql">postgresql (Retail Banking)</option>
+                <option value="mongodb">mongodb (Document Store)</option>
+                <option value="redis">redis (Key-Value Cache)</option>
+                <option value="kafka">kafka (Event Stream)</option>
+                <option value="cassandra">cassandra (Wide-Column)</option>
+                <option value="influxdb">influxdb (Time-Series)</option>
+                <option value="minio">minio (S3 Objects)</option>
               </select>
             </div>
             <div className="flex items-center gap-2">

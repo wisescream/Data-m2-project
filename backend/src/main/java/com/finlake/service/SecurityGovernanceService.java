@@ -334,19 +334,19 @@ public class SecurityGovernanceService {
                     newRow.put(entry.getKey(), maskEmail(strVal));
                 }
                 // Mask First Name
-                else if (key.equals("first_name")) {
+                else if (key.contains("first_name")) {
                     newRow.put(entry.getKey(), maskName(strVal));
                 }
                 // Mask Last Name
-                else if (key.equals("last_name")) {
+                else if (key.contains("last_name")) {
                     newRow.put(entry.getKey(), maskName(strVal));
                 }
                 // Mask Full Name
                 else if (key.contains("customer_name") || key.equals("name")) {
                     newRow.put(entry.getKey(), maskFullName(strVal));
                 }
-                // Mask Account Identifiers
-                else if (key.equals("name_orig") || key.equals("name_dest")) {
+                // Mask Account / IBAN Identifiers
+                else if (key.contains("name_orig") || key.contains("name_dest") || key.contains("iban")) {
                     newRow.put(entry.getKey(), maskAccount(strVal));
                 }
             }

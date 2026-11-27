@@ -13,10 +13,13 @@ import {
   RotateCcw,
   Ban
 } from "lucide-react";
-import { listJobs, submitJob, fetchJobResult } from "@/lib/api";
+import { listJobs, submitJob, fetchJobResult, fetchSources, fetchTables, DataSourceItem } from "@/lib/api";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
+  const [sources, setSources] = useState<DataSourceItem[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState("erp-production");
+  const [availableTables, setAvailableTables] = useState<string[]>(["transactions", "Customer", "Invoice", "Payment"]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [selectedResult, setSelectedResult] = useState<any>(null);
@@ -28,6 +31,34 @@ export default function JobsPage() {
   const [batchSize, setBatchSize] = useState(50000);
   const [partitionBy, setPartitionBy] = useState("none");
   const [maxRows, setMaxRows] = useState<number | "">("");
+
+  const loadSourcesAndTables = async () => {
+    try {
+      const srcList = await fetchSources();
+      setSources(srcList);
+      if (srcList.length > 0) {
+        const defaultSrc = srcList.find((s) => s.status === "connected") || srcList[0];
+        setSelectedSourceId(defaultSrc.id);
+        await handleSourceChange(defaultSrc.id);
+      }
+    } catch (err) {
+      console.error("Failed to load sources", err);
+    }
+  };
+
+  const handleSourceChange = async (srcId: string) => {
+    setSelectedSourceId(srcId);
+    try {
+      const res = await fetchTables(srcId);
+      const tbls = res?.tables || [];
+      setAvailableTables(tbls);
+      if (tbls.length > 0) {
+        setTable(tbls[0]);
+      }
+    } catch (err) {
+      console.warn("Could not fetch tables for source", srcId);
+    }
+  };
 
   const refreshJobs = async () => {
     setLoading(true);
@@ -42,18 +73,29 @@ export default function JobsPage() {
   };
 
   useEffect(() => {
+    loadSourcesAndTables();
     refreshJobs();
     const interval = setInterval(refreshJobs, 5000);
-    return () => clearInterval(interval);
+    const onSessionChange = () => {
+      loadSourcesAndTables();
+      refreshJobs();
+    };
+    window.addEventListener("finlake-session-changed", onSessionChange);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("finlake-session-changed", onSessionChange);
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const srcObj = sources.find((s) => s.id === selectedSourceId);
+      const isPg = srcObj?.type?.toLowerCase().includes("postgres");
       const payload: any = {
-        source_id: "sqlserver-paysim",
-        schema_name: "dbo",
+        source_id: selectedSourceId,
+        schema_name: isPg ? "public" : "dbo",
         table,
         format,
         compression,
@@ -146,16 +188,36 @@ export default function JobsPage() {
         <h2 className="text-base font-bold text-zinc-900 mb-4">Configure New Ingestion Pipeline Run</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
           <div>
-            <label className="block text-xs font-medium text-zinc-700 mb-1">Source Table</label>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Source Database</label>
+            <select
+              value={selectedSourceId}
+              onChange={(e) => handleSourceChange(e.target.value)}
+              className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
+            >
+              {sources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.type})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1">Table / Collection / Topic</label>
             <select
               value={table}
               onChange={(e) => setTable(e.target.value)}
               className="w-full bg-white border border-zinc-200 rounded-lg px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:border-zinc-400 font-mono"
             >
-              <option value="transactions">dbo.transactions (PaySim)</option>
-              <option value="Customer">dbo.Customer</option>
-              <option value="Invoice">dbo.Invoice</option>
-              <option value="Payment">dbo.Payment</option>
+              {availableTables.length > 0 ? (
+                availableTables.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))
+              ) : (
+                <option value={table}>{table}</option>
+              )}
             </select>
           </div>
 

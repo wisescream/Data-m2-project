@@ -768,7 +768,19 @@ public class SourceExplorerService {
         );
     }
 
-    private Connection getConnectionForSource(String sourceId) throws SQLException {
+    public String getSourceType(String sourceId) {
+        DataSourceItemDTO item = sourceRegistry.get(sourceId);
+        SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
+        if (config != null && config.type() != null && !config.type().isBlank()) {
+            return config.type().toLowerCase().trim();
+        }
+        if (item != null && item.type() != null) {
+            return item.type().toLowerCase().trim();
+        }
+        return "sqlserver";
+    }
+
+    public Connection getConnectionForSource(String sourceId) throws SQLException {
         SourceProbeRequestDTO config = sourceConfigs.get(sourceId);
         if (config == null) {
             return jdbcTemplate.getDataSource().getConnection();

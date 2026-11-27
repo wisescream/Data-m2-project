@@ -93,23 +93,22 @@ public class JobOrchestrationService {
             return repository.listJobs(limit, offset);
         }
         String t = tenantId.toLowerCase().trim();
+        // Always include live submitted jobs stored in SQL Server repository belonging to this tenant
+        List<JobStatusResponseDTO> liveTenantJobs = new ArrayList<>(
+            repository.listJobs(limit, offset).stream()
+                .filter(j -> t.equalsIgnoreCase(sourceExplorerService.getTenantForSource(j.sourceId())))
+                .toList()
+        );
+
         if ("tenant_apex".equals(t)) {
-            List<JobStatusResponseDTO> apexJobs = new ArrayList<>();
-            apexJobs.add(new JobStatusResponseDTO("job_apex_pg_01", "retail-pos-pg", "public", "retail_banking_tx", "parquet", "zstd", 50000, "event_date", "SUCCESS", "2026-11-26T21:10:00Z", "2026-11-26T21:11:12Z", null));
-            apexJobs.add(new JobStatusResponseDTO("job_apex_mongo_02", "mongo-customer-profiles", "customer_profiles", "customer_profiles", "parquet", "snappy", 25000, "kyc_tier", "SUCCESS", "2026-11-26T22:05:00Z", "2026-11-26T22:05:45Z", null));
-            apexJobs.add(new JobStatusResponseDTO("job_apex_redis_03", "redis-session-cache", "db0", "session:token", "parquet", "zstd", 10000, "none", "SUCCESS", "2026-11-27T00:30:00Z", "2026-11-27T00:30:18Z", null));
-            return apexJobs;
+            liveTenantJobs.add(new JobStatusResponseDTO("job_apex_pg_01", "retail-pos-pg", "public", "retail_banking_tx", "parquet", "zstd", 50000, "event_date", "SUCCESS", "2026-11-26T21:10:00Z", "2026-11-26T21:11:12Z", null));
+            liveTenantJobs.add(new JobStatusResponseDTO("job_apex_mongo_02", "mongo-customer-profiles", "customer_profiles", "customer_profiles", "parquet", "snappy", 25000, "kyc_tier", "SUCCESS", "2026-11-26T22:05:00Z", "2026-11-26T22:05:45Z", null));
+            liveTenantJobs.add(new JobStatusResponseDTO("job_apex_redis_03", "redis-session-cache", "db0", "session:token", "parquet", "zstd", 10000, "none", "SUCCESS", "2026-11-27T00:30:00Z", "2026-11-27T00:30:18Z", null));
+        } else if ("tenant_nordic".equals(t)) {
+            liveTenantJobs.add(new JobStatusResponseDTO("job_nordic_kafka_01", "nordic-kafka-stream", "kafka_topics", "finlake.transactions.events", "parquet", "zstd", 50000, "ingest_date", "SUCCESS", "2026-11-26T23:00:00Z", "2026-11-26T23:00:32Z", null));
+            liveTenantJobs.add(new JobStatusResponseDTO("job_nordic_cass_02", "nordic-cassandra-tx", "nordic_ledger", "mobile_tx_by_account", "parquet", "snappy", 100000, "tx_ts", "SUCCESS", "2026-11-25T16:40:00Z", "2026-11-25T16:42:10Z", null));
         }
-        if ("tenant_nordic".equals(t)) {
-            List<JobStatusResponseDTO> nordicJobs = new ArrayList<>();
-            nordicJobs.add(new JobStatusResponseDTO("job_nordic_kafka_01", "nordic-kafka-stream", "kafka_topics", "finlake.transactions.events", "parquet", "zstd", 50000, "ingest_date", "SUCCESS", "2026-11-26T23:00:00Z", "2026-11-26T23:00:32Z", null));
-            nordicJobs.add(new JobStatusResponseDTO("job_nordic_cass_02", "nordic-cassandra-tx", "nordic_ledger", "mobile_tx_by_account", "parquet", "snappy", 100000, "tx_ts", "SUCCESS", "2026-11-25T16:40:00Z", "2026-11-25T16:42:10Z", null));
-            return nordicJobs;
-        }
-        // Default: tenant_acme -> return SQL Server / Kafka / MinIO jobs owned by Acme
-        return repository.listJobs(limit, offset).stream()
-                .filter(j -> "tenant_acme".equalsIgnoreCase(sourceExplorerService.getTenantForSource(j.sourceId())))
-                .toList();
+        return liveTenantJobs;
     }
 
     public Optional<JobResultResponseDTO> getJobResult(String jobId) {

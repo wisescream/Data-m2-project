@@ -2,6 +2,7 @@ package com.finlake.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finlake.dto.JobCreateRequestDTO;
+import com.finlake.dto.QueryResultDTO;
 import com.finlake.repository.JobMetadataRepository;
 import io.minio.BucketExistsArgs;
 import io.minio.MakeBucketArgs;
@@ -54,6 +55,7 @@ public class NativeJavaIngestionService {
     private final MinioClient minioClient;
     private final JobMetadataRepository repository;
     private final ObjectMapper objectMapper;
+    private final SourceExplorerService sourceExplorerService;
 
     @Value("${finlake.minio.bucket:finlake}")
     private String defaultBucket;
@@ -61,11 +63,13 @@ public class NativeJavaIngestionService {
     public NativeJavaIngestionService(DataSource dataSource,
                                       MinioClient minioClient,
                                       JobMetadataRepository repository,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      SourceExplorerService sourceExplorerService) {
         this.dataSource = dataSource;
         this.minioClient = minioClient;
         this.repository = repository;
         this.objectMapper = objectMapper;
+        this.sourceExplorerService = sourceExplorerService;
     }
 
     public void executeIngestion(String jobId, JobCreateRequestDTO req) {
@@ -104,115 +108,166 @@ public class NativeJavaIngestionService {
             long totalBytes = 0;
             List<Map<String, Object>> manifestObjects = new ArrayList<>();
 
-            // 1. Extract from SQL Server in batches
-            String selectSql = (maxRows != null)
-                    ? "SELECT TOP " + maxRows + " * FROM dbo." + tableName
-                    : "SELECT * FROM dbo." + tableName;
+            String sourceId = (req.sourceId() != null && !req.sourceId().isBlank()) ? req.sourceId() : "erp-production";
+            String sourceType = sourceExplorerService.getSourceType(sourceId);
+            boolean isPolyglotNonJdbc = sourceType.contains("kafka") || sourceType.contains("mongo")
+                    || sourceType.contains("redis") || sourceType.contains("minio")
+                    || sourceType.contains("s3") || sourceType.contains("cassandra") || sourceType.contains("influx");
 
-            try (Connection conn = dataSource.getConnection();
-                 PreparedStatement pstmt = conn.prepareStatement(selectSql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-
-                pstmt.setFetchSize(Math.min(batchSize, 5000));
-
-                try (ResultSet rs = pstmt.executeQuery()) {
-                    ResultSetMetaData meta = rs.getMetaData();
-                    int colCount = meta.getColumnCount();
-                    List<String> colNames = new ArrayList<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        colNames.add(meta.getColumnLabel(i));
-                    }
-
-                    int stepColIdx = -1;
-                    boolean hasEventDate = false;
-                    for (int i = 0; i < colNames.size(); i++) {
-                        if ("step".equalsIgnoreCase(colNames.get(i))) {
-                            stepColIdx = i;
-                        }
-                        if ("event_date".equalsIgnoreCase(colNames.get(i))) {
-                            hasEventDate = true;
-                        }
-                    }
-
-                    boolean addEventDateCol = (stepColIdx >= 0 && !hasEventDate);
-                    List<String> headerCols = new ArrayList<>(colNames);
-                    if (addEventDateCol) {
-                        headerCols.add("event_date");
-                    }
-
-                    // Fallback partitionCol if not present in headerCols
-                    String effectivePartitionCol = partitionCol;
-                    if (effectivePartitionCol != null && !effectivePartitionCol.isBlank() && !headerCols.contains(effectivePartitionCol)) {
-                        log.warn("Partition column '{}' not found in table columns {}, falling back to unpartitioned.",
-                                effectivePartitionCol, headerCols);
-                        effectivePartitionCol = null;
-                    }
-
-                    int batchIndex = 1;
-                    boolean hasMore = true;
-
-                    while (hasMore) {
-                        Path csvBatchFile = tempDir.resolve("batch_" + batchIndex + ".csv");
-                        long batchRowCount = 0;
-
-                        try (BufferedWriter bw = new BufferedWriter(new FileWriter(csvBatchFile.toFile(), StandardCharsets.UTF_8))) {
-                            // Write header
-                            bw.write(String.join(",", headerCols.stream().map(this::escapeCsv).toList()));
+            if (isPolyglotNonJdbc) {
+                QueryResultDTO polyData = sourceExplorerService.previewTable(sourceId, req.schemaName(), tableName, "system", "ADMIN");
+                List<String> headerCols = polyData.columns();
+                if (headerCols != null && !headerCols.isEmpty() && polyData.rows() != null && !polyData.rows().isEmpty()) {
+                    Path csvBatchFile = tempDir.resolve("batch_1.csv");
+                    try (BufferedWriter bw = new BufferedWriter(new FileWriter(csvBatchFile.toFile(), StandardCharsets.UTF_8))) {
+                        bw.write(String.join(",", headerCols.stream().map(this::escapeCsv).toList()));
+                        bw.newLine();
+                        for (Map<String, Object> r : polyData.rows()) {
+                            List<String> rowVals = new ArrayList<>();
+                            for (String col : headerCols) {
+                                Object val = r.get(col);
+                                rowVals.add(val != null ? escapeCsv(val.toString()) : "");
+                            }
+                            bw.write(String.join(",", rowVals));
                             bw.newLine();
+                            totalRows++;
+                        }
+                    }
+                    String effectivePartitionCol = (partitionCol != null && headerCols.contains(partitionCol)) ? partitionCol : null;
+                    String safeTableSlug = tableName.replaceAll("[^a-zA-Z0-9_]", "_");
+                    List<Map<String, Object>> batchObjects = processAndUploadBatch(
+                            csvBatchFile, tempDir, 1, safeTableSlug, format, compression, effectivePartitionCol, jobId, runId
+                    );
+                    for (Map<String, Object> obj : batchObjects) {
+                        manifestObjects.add(obj);
+                        totalBytes += ((Number) obj.get("size_bytes")).longValue();
+                    }
+                    Files.deleteIfExists(csvBatchFile);
+                }
+            } else {
+                boolean isPostgres = sourceType.contains("postgres");
+                String rawSchema = (req.schemaName() != null && !req.schemaName().isBlank())
+                        ? req.schemaName()
+                        : (isPostgres ? "public" : "dbo");
+                if (isPostgres && "dbo".equalsIgnoreCase(rawSchema)) {
+                    rawSchema = "public";
+                }
+                String selectSql;
+                if (isPostgres) {
+                    selectSql = (maxRows != null)
+                            ? "SELECT * FROM \"" + rawSchema + "\".\"" + tableName + "\" LIMIT " + maxRows
+                            : "SELECT * FROM \"" + rawSchema + "\".\"" + tableName + "\"";
+                } else {
+                    selectSql = (maxRows != null)
+                            ? "SELECT TOP " + maxRows + " * FROM [" + rawSchema + "].[" + tableName + "]"
+                            : "SELECT * FROM [" + rawSchema + "].[" + tableName + "]";
+                }
 
-                            while (rs.next()) {
-                                List<String> row = new ArrayList<>(colCount + (addEventDateCol ? 1 : 0));
-                                Object stepVal = null;
-                                for (int i = 1; i <= colCount; i++) {
-                                    Object val = rs.getObject(i);
-                                    if (i - 1 == stepColIdx) {
-                                        stepVal = val;
-                                    }
-                                    row.add(val != null ? escapeCsv(val.toString()) : "");
-                                }
+                try (Connection conn = getJdbcConnection(sourceId);
+                     PreparedStatement pstmt = conn.prepareStatement(selectSql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
 
-                                if (addEventDateCol) {
-                                    String eventDate = "2023-01-01";
-                                    if (stepVal instanceof Number n) {
-                                        int step = n.intValue();
-                                        Instant evt = SIMULATED_BASE_TIME.plus(Math.max(0, step - 1), ChronoUnit.HOURS);
-                                        eventDate = DATE_FORMATTER.format(evt);
-                                    }
-                                    row.add(escapeCsv(eventDate));
-                                }
+                    pstmt.setFetchSize(Math.min(batchSize, 5000));
 
-                                bw.write(String.join(",", row));
-                                bw.newLine();
-                                batchRowCount++;
-                                totalRows++;
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        ResultSetMetaData meta = rs.getMetaData();
+                        int colCount = meta.getColumnCount();
+                        List<String> colNames = new ArrayList<>();
+                        for (int i = 1; i <= colCount; i++) {
+                            colNames.add(meta.getColumnLabel(i));
+                        }
 
-                                if (batchRowCount >= batchSize || (maxRows != null && totalRows >= maxRows)) {
-                                    break;
-                                }
+                        int stepColIdx = -1;
+                        boolean hasEventDate = false;
+                        for (int i = 0; i < colNames.size(); i++) {
+                            if ("step".equalsIgnoreCase(colNames.get(i))) {
+                                stepColIdx = i;
+                            }
+                            if ("event_date".equalsIgnoreCase(colNames.get(i))) {
+                                hasEventDate = true;
                             }
                         }
 
-                        if (batchRowCount == 0) {
+                        boolean addEventDateCol = (stepColIdx >= 0 && !hasEventDate);
+                        List<String> headerCols = new ArrayList<>(colNames);
+                        if (addEventDateCol) {
+                            headerCols.add("event_date");
+                        }
+
+                        // Fallback partitionCol if not present in headerCols
+                        String effectivePartitionCol = partitionCol;
+                        if (effectivePartitionCol != null && !effectivePartitionCol.isBlank() && !headerCols.contains(effectivePartitionCol)) {
+                            log.warn("Partition column '{}' not found in table columns {}, falling back to unpartitioned.",
+                                    effectivePartitionCol, headerCols);
+                            effectivePartitionCol = null;
+                        }
+
+                        int batchIndex = 1;
+                        boolean hasMore = true;
+
+                        while (hasMore) {
+                            Path csvBatchFile = tempDir.resolve("batch_" + batchIndex + ".csv");
+                            long batchRowCount = 0;
+
+                            try (BufferedWriter bw = new BufferedWriter(new FileWriter(csvBatchFile.toFile(), StandardCharsets.UTF_8))) {
+                                // Write header
+                                bw.write(String.join(",", headerCols.stream().map(this::escapeCsv).toList()));
+                                bw.newLine();
+
+                                while (rs.next()) {
+                                    List<String> row = new ArrayList<>(colCount + (addEventDateCol ? 1 : 0));
+                                    Object stepVal = null;
+                                    for (int i = 1; i <= colCount; i++) {
+                                        Object val = rs.getObject(i);
+                                        if (i - 1 == stepColIdx) {
+                                            stepVal = val;
+                                        }
+                                        row.add(val != null ? escapeCsv(val.toString()) : "");
+                                    }
+
+                                    if (addEventDateCol) {
+                                        String eventDate = "2023-01-01";
+                                        if (stepVal instanceof Number n) {
+                                            int step = n.intValue();
+                                            Instant evt = SIMULATED_BASE_TIME.plus(Math.max(0, step - 1), ChronoUnit.HOURS);
+                                            eventDate = DATE_FORMATTER.format(evt);
+                                        }
+                                        row.add(escapeCsv(eventDate));
+                                    }
+
+                                    bw.write(String.join(",", row));
+                                    bw.newLine();
+                                    batchRowCount++;
+                                    totalRows++;
+
+                                    if (batchRowCount >= batchSize || (maxRows != null && totalRows >= maxRows)) {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (batchRowCount == 0) {
+                                Files.deleteIfExists(csvBatchFile);
+                                break;
+                            }
+
+                            // 2. Convert batch to target format & upload to MinIO
+                            List<Map<String, Object>> batchObjects = processAndUploadBatch(
+                                    csvBatchFile, tempDir, batchIndex, tableName, format, compression, effectivePartitionCol, jobId, runId
+                            );
+
+                            for (Map<String, Object> obj : batchObjects) {
+                                manifestObjects.add(obj);
+                                totalBytes += ((Number) obj.get("size_bytes")).longValue();
+                            }
+
                             Files.deleteIfExists(csvBatchFile);
-                            break;
-                        }
+                            batchIndex++;
 
-                        // 2. Convert batch to target format & upload to MinIO
-                        List<Map<String, Object>> batchObjects = processAndUploadBatch(
-                                csvBatchFile, tempDir, batchIndex, tableName, format, compression, effectivePartitionCol, jobId, runId
-                        );
-
-                        for (Map<String, Object> obj : batchObjects) {
-                            manifestObjects.add(obj);
-                            totalBytes += ((Number) obj.get("size_bytes")).longValue();
-                        }
-
-                        Files.deleteIfExists(csvBatchFile);
-                        batchIndex++;
-
-                        if (maxRows != null && totalRows >= maxRows) {
-                            hasMore = false;
-                        } else if (batchRowCount < batchSize) {
-                            hasMore = false;
+                            if (maxRows != null && totalRows >= maxRows) {
+                                hasMore = false;
+                            } else if (batchRowCount < batchSize) {
+                                hasMore = false;
+                            }
                         }
                     }
                 }
@@ -397,6 +452,13 @@ public class NativeJavaIngestionService {
         } catch (Exception e) {
             log.warn("Could not verify/create bucket {}: {}", defaultBucket, e.getMessage());
         }
+    }
+
+    private Connection getJdbcConnection(String sourceId) throws java.sql.SQLException {
+        if (sourceId != null && !sourceId.equalsIgnoreCase("sqlserver-paysim") && !sourceId.equalsIgnoreCase("erp-production")) {
+            return sourceExplorerService.getConnectionForSource(sourceId);
+        }
+        return dataSource.getConnection();
     }
 
     private String escapeCsv(String val) {
