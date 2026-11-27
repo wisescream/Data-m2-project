@@ -48,6 +48,12 @@ public class AiTextToSqlService {
         String prompt = request.prompt().trim();
         String lower = prompt.toLowerCase(Locale.ROOT);
 
+        // 0. Check multi-database / polyglot federated intents first
+        TextToSqlResponseDTO polyglotMatch = matchPolyglotOrFederatedIntent(lower);
+        if (polyglotMatch != null) {
+            return polyglotMatch;
+        }
+
         // 1. Check for Groq API Key
         String groqKey = System.getenv("GROQ_API_KEY");
         if (groqKey != null && !groqKey.isBlank()) {
@@ -309,5 +315,86 @@ public class AiTextToSqlService {
             }
         }
         return defaultLimit;
+    }
+
+    private TextToSqlResponseDTO matchPolyglotOrFederatedIntent(String lower) {
+        if ((lower.contains("postgres") && lower.contains("mongo")) || lower.contains("cross-db") || lower.contains("kyc")) {
+            return new TextToSqlResponseDTO(
+                "SELECT * FROM postgresql.public.retail_customers p JOIN mongodb.customer_profiles.customer_profiles m ON p.customer_id = m.customer_id",
+                "Federated Cross-DB JOIN correlating PostgreSQL retail customers with MongoDB KYC document profiles.",
+                "federated",
+                "public",
+                "table",
+                null,
+                null
+            );
+        }
+        if ((lower.contains("sql server") || lower.contains("sqlserver")) && lower.contains("kafka")) {
+            return new TextToSqlResponseDTO(
+                "SELECT * FROM hive.finlake_curated.Customer c JOIN kafka.finlake_polyglot.events k ON c.email = k.email",
+                "Federated Cross-DB JOIN linking SQL Server customers with real-time Kafka polyglot stream events.",
+                "federated",
+                "dbo",
+                "table",
+                null,
+                null
+            );
+        }
+        if (lower.contains("mongo")) {
+            return new TextToSqlResponseDTO(
+                "SELECT _id, customer_id, first_name, last_name, email, kyc_tier, iban FROM mongodb.customer_profiles.customer_profiles",
+                "Queries semi-structured BSON customer KYC profiles from MongoDB Document Store.",
+                "mongodb",
+                "customer_profiles",
+                "table",
+                null,
+                null
+            );
+        }
+        if (lower.contains("redis")) {
+            return new TextToSqlResponseDTO(
+                "SELECT redis_key, ttl_seconds, email, name_orig, last_active_ip FROM redis.db0.session_token",
+                "Inspects active user session keys and TTLs from Redis Key-Value Store.",
+                "redis",
+                "db0",
+                "bar",
+                "redis_key",
+                "ttl_seconds"
+            );
+        }
+        if (lower.contains("kafka")) {
+            return new TextToSqlResponseDTO(
+                "SELECT event_id, timestamp, source_type, entity, customer_name, email, amount FROM kafka.kafka_topics.finlake.polyglot.events",
+                "Streams real-time polyglot events from Apache Kafka KRaft topic finlake.polyglot.events.",
+                "kafka",
+                "kafka_topics",
+                "bar",
+                "source_type",
+                "amount"
+            );
+        }
+        if (lower.contains("cassandra")) {
+            return new TextToSqlResponseDTO(
+                "SELECT account_id, tx_ts, name_orig, amount, currency FROM cassandra.nordic_ledger.mobile_tx_by_account",
+                "Queries wide-column Nordic mobile-money ledger partitions from Apache Cassandra.",
+                "cassandra",
+                "nordic_ledger",
+                "bar",
+                "account_id",
+                "amount"
+            );
+        }
+        if (lower.contains("influx")) {
+            return new TextToSqlResponseDTO(
+                "SELECT time, source_node, tps_value, latency_ms FROM influxdb.mobile_tps_metrics.ingestion_throughput_tps",
+                "Retrieves gateway TPS throughput and sink latency time-series from InfluxDB.",
+                "influxdb",
+                "mobile_tps_metrics",
+                "line",
+                "source_node",
+                "tps_value"
+            );
+        }
+        return null;
     }
 }

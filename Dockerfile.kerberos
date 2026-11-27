@@ -1,0 +1,15 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache krb5-server krb5 bash
+
+RUN mkdir -p /var/lib/krb5kdc /etc/krb5.conf.d
+
+COPY docker/kerberos/krb5.conf /etc/krb5.conf
+COPY docker/kerberos/kdc.conf /var/lib/krb5kdc/kdc.conf
+COPY docker/kerberos/entrypoint.sh /entrypoint.sh
+
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 88/tcp 88/udp 749/tcp
+
+ENTRYPOINT ["/entrypoint.sh"]

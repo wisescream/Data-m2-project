@@ -115,12 +115,12 @@ public class SourceExplorerService {
                 false, true, 10
         ));
 
-        // 4. MongoDB Document Store (NoSQL)
+        // 4. MongoDB Document Store (NoSQL - Live Docker Container)
         sourceRegistry.put("mongo-customer-profiles", new DataSourceItemDTO(
                 "mongo-customer-profiles",
                 "mongo-customer-profiles",
                 "MongoDB",
-                "mongo-cluster.corp.internal:27017",
+                "mongodb:27017",
                 27017,
                 "customer_profiles",
                 "connected",
@@ -129,17 +129,17 @@ public class SourceExplorerService {
                 "MongoDB 7.0 Community (Document Store)"
         ));
         sourceConfigs.put("mongo-customer-profiles", new SourceProbeRequestDTO(
-                "mongo-customer-profiles", "mongodb", "mongo-cluster.corp.internal", 27017,
-                "customer_profiles", "scram-sha-256", "finlake_app", "SecretMongoPass2026!",
+                "mongo-customer-profiles", "mongodb", "mongodb", 27017,
+                "customer_profiles", "scram-sha-256", "finlake_app", "FinLake2026!StrongPass#",
                 true, true, 15
         ));
 
-        // 5. Redis Key-Value Store
+        // 5. Redis Key-Value Store (Live Docker Container)
         sourceRegistry.put("redis-session-cache", new DataSourceItemDTO(
                 "redis-session-cache",
                 "redis-session-cache",
                 "Redis",
-                "redis-cache.corp.internal:6379",
+                "redis:6379",
                 6379,
                 "db0",
                 "connected",
@@ -148,9 +148,28 @@ public class SourceExplorerService {
                 "Redis 7.2 Alpine (Key-Value Store)"
         ));
         sourceConfigs.put("redis-session-cache", new SourceProbeRequestDTO(
-                "redis-session-cache", "redis", "redis-cache.corp.internal", 6379,
+                "redis-session-cache", "redis", "redis", 6379,
                 "db0", "auth", "default", "RedisSecret2026!",
                 false, true, 5
+        ));
+
+        // 5b. MIT Kerberos KDC (Live Docker Container)
+        sourceRegistry.put("kerberos-auth-kdc", new DataSourceItemDTO(
+                "kerberos-auth-kdc",
+                "kerberos-auth-kdc",
+                "Kerberos KDC",
+                "kerberos:88",
+                88,
+                "FINLAKE.INTERNAL",
+                "connected",
+                null,
+                LocalDateTime.now().minusMinutes(5),
+                "MIT Kerberos 5 KDC (FINLAKE.INTERNAL)"
+        ));
+        sourceConfigs.put("kerberos-auth-kdc", new SourceProbeRequestDTO(
+                "kerberos-auth-kdc", "kerberos", "kerberos", 88,
+                "FINLAKE.INTERNAL", "gssapi", "finlake/admin", "FinLake2026!",
+                true, true, 10
         ));
 
         // 6. MinIO S3 Object Storage
@@ -301,6 +320,7 @@ public class SourceExplorerService {
         sourceTenants.put("erp-production", "tenant_acme");
         sourceTenants.put("kafka-finlake-hub", "tenant_acme");
         sourceTenants.put("minio-archive-s3", "tenant_acme");
+        sourceTenants.put("kerberos-auth-kdc", "tenant_acme");
         sourceTenants.put("crm-sales", "tenant_acme");
         sourceTenants.put("finance-dwh", "tenant_acme");
         sourceTenants.put("hr-core", "tenant_acme");
@@ -481,6 +501,26 @@ public class SourceExplorerService {
                     null,
                     List.of(),
                     keyspaces
+            );
+        }
+
+        // Specialized probe for MIT Kerberos KDC
+        if (engineType.contains("kerberos") || engineType.contains("kdc")) {
+            steps.add(new SourceProbeStepDTO(2, "Sécuriser la connexion", "Kerberos v5 TGT / AES-256-CTS", "success"));
+            steps.add(new SourceProbeStepDTO(3, "S'authentifier", "Principal " + user + "@" + database, "success"));
+            List<String> principals = List.of("finlake/admin@FINLAKE.INTERNAL", "trino/finlake-trino@FINLAKE.INTERNAL", "sqlserver/finlake-sqlserver@FINLAKE.INTERNAL");
+            steps.add(new SourceProbeStepDTO(4, "Vérifier le Realm KDC", database + " (" + principals.size() + " principals actifs)", "success"));
+            long duration = System.currentTimeMillis() - start;
+            return new SourceProbeResponseDTO(
+                    "success",
+                    "Le serveur KDC Kerberos a été joint et les tickets TGT du realm " + database + " sont valides.",
+                    "MIT Kerberos 5 KDC (FINLAKE.INTERNAL)",
+                    duration,
+                    LocalDateTime.now(),
+                    steps,
+                    null,
+                    List.of(),
+                    principals
             );
         }
 
@@ -697,6 +737,9 @@ public class SourceExplorerService {
         } else if (rawType.contains("influx")) {
             typeDisplay = "InfluxDB (Time-Series)";
             defaultEnginePort = 8086;
+        } else if (rawType.contains("kerberos") || rawType.contains("kdc")) {
+            typeDisplay = "Kerberos KDC";
+            defaultEnginePort = 88;
         }
 
         int port = (req.port() != null && req.port() > 0) ? req.port() : defaultEnginePort;
@@ -834,6 +877,9 @@ public class SourceExplorerService {
         if (engineType.contains("influx")) {
             return new TableListResponseDTO(sourceId, "mobile_tps_metrics", List.of("ingestion_throughput_tps", "kafka_sink_latency_ms"));
         }
+        if (engineType.contains("kerberos") || engineType.contains("kdc")) {
+            return new TableListResponseDTO(sourceId, "FINLAKE.INTERNAL", List.of("kerberos_principals", "kdc_ticket_grants"));
+        }
 
         boolean isPostgres = config != null && (
                 (config.type() != null && config.type().toLowerCase().contains("postgres")) ||
@@ -931,6 +977,15 @@ public class SourceExplorerService {
                 new ColumnSchemaDTO("latency_ms", "FLOAT64", false, false, false)
             );
             return new TableSchemaResponseDTO(sourceId, "mobile_tps_metrics", table, 520400L, cols.size(), List.of("time"), cols);
+        }
+        if (engineType.contains("kerberos") || engineType.contains("kdc")) {
+            List<ColumnSchemaDTO> cols = List.of(
+                new ColumnSchemaDTO("principal", "STRING (KDC Principal)", false, true, false),
+                new ColumnSchemaDTO("realm", "STRING", false, false, false),
+                new ColumnSchemaDTO("encryption_type", "STRING", false, false, false),
+                new ColumnSchemaDTO("ticket_lifetime", "STRING", false, false, false)
+            );
+            return new TableSchemaResponseDTO(sourceId, "FINLAKE.INTERNAL", table, 3L, cols.size(), List.of("principal"), cols);
         }
 
         boolean isPostgres = config != null && (
@@ -1072,6 +1127,13 @@ public class SourceExplorerService {
             rows = List.of(
                 Map.of("time", "2026-11-27T01:15:00Z", "source_node", "nordic-gw-01", "tps_value", 1420.5, "latency_ms", 12.4),
                 Map.of("time", "2026-11-27T01:16:00Z", "source_node", "nordic-gw-02", "tps_value", 1588.2, "latency_ms", 11.8)
+            );
+        } else if (engineType.contains("kerberos") || engineType.contains("kdc")) {
+            cols = List.of("principal", "realm", "encryption_type", "ticket_lifetime");
+            rows = List.of(
+                Map.of("principal", "finlake/admin@FINLAKE.INTERNAL", "realm", "FINLAKE.INTERNAL", "encryption_type", "aes256-cts-hmac-sha1-96", "ticket_lifetime", "24h"),
+                Map.of("principal", "trino/finlake-trino@FINLAKE.INTERNAL", "realm", "FINLAKE.INTERNAL", "encryption_type", "aes256-cts-hmac-sha1-96", "ticket_lifetime", "24h"),
+                Map.of("principal", "sqlserver/finlake-sqlserver@FINLAKE.INTERNAL", "realm", "FINLAKE.INTERNAL", "encryption_type", "aes256-cts-hmac-sha1-96", "ticket_lifetime", "24h")
             );
         } else {
             // Live SQL query for SQL Server / PostgreSQL

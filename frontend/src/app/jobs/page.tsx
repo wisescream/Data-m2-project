@@ -297,6 +297,72 @@ export default function JobsPage() {
         </form>
       </div>
 
+      {/* Pipeline Execution Flow Section */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-bold text-zinc-900 flex items-center gap-2">
+              <ChevronRight className="h-4 w-4 text-emerald-600" />
+              Pipeline Execution Flow
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Real-time bounded-memory extraction & promotion topology for {jobs[0]?.job_id || "current pipeline configuration"}.
+            </p>
+          </div>
+          {jobs[0] && getStatusBadge(jobs[0].status)}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-center">
+          {[
+            {
+              step: "1. Source Extract",
+              title: jobs[0]?.source_id || selectedSourceId,
+              detail: `${jobs[0]?.table_name || table} (${jobs[0]?.schema_name || "auto"})`,
+              active: true,
+            },
+            {
+              step: "2. Memory Batching",
+              title: "Keyset / Polyglot",
+              detail: `${(jobs[0]?.batch_size || batchSize).toLocaleString()} rows/batch`,
+              active: true,
+            },
+            {
+              step: "3. Serialization",
+              title: `${(jobs[0]?.format || format).toUpperCase()} (${(jobs[0]?.compression || compression).toUpperCase()})`,
+              detail: `Partition: ${jobs[0]?.partition_columns || partitionBy}`,
+              active: true,
+            },
+            {
+              step: "4. Object Sink",
+              title: "MinIO S3 Staging",
+              detail: `s3://finlake/curated/${jobs[0]?.table_name || table}`,
+              active: jobs[0]?.status !== "FAILED",
+            },
+            {
+              step: "5. Catalog & Manifest",
+              title: "Hive / Iceberg Ready",
+              detail: jobs[0]?.status === "SUCCESS" ? "Manifest Verified (SHA-256)" : (jobs[0]?.status || "Ready to Dispatch"),
+              active: jobs[0]?.status === "SUCCESS",
+            },
+          ].map((node, idx) => (
+            <div key={node.step} className="relative flex items-center">
+              <div className={`w-full p-3.5 rounded-xl border ${
+                node.active ? "bg-zinc-50 border-emerald-200" : "bg-zinc-50 border-zinc-200"
+              }`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 block">
+                  {node.step}
+                </span>
+                <p className="text-xs font-bold text-zinc-900 mt-1 truncate font-mono">{node.title}</p>
+                <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{node.detail}</p>
+              </div>
+              {idx < 4 && (
+                <ChevronRight className="hidden md:block h-4 w-4 text-zinc-400 shrink-0 -mr-2 ml-1 z-10" />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Jobs History Table */}
       <div className="bg-white border border-zinc-200 rounded-xl p-6 shadow-xs">
         <h2 className="text-base font-bold text-zinc-900 mb-4">Ingestion Job Execution History</h2>

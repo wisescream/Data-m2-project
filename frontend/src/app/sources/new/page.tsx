@@ -79,20 +79,28 @@ export default function NewSourcePage() {
       setPassword("");
     } else if (newType === "MongoDB") {
       setConnectionName("mongo-customer-profiles");
-      setHost("mongo-cluster.corp.internal");
+      setHost("mongodb");
       setPort(27017);
       setDatabase("customer_profiles");
       setAuthMethod("SCRAM-SHA-256");
       setUsername("finlake_app");
-      setPassword("SecretMongoPass2026!");
+      setPassword("FinLake2026!StrongPass#");
     } else if (newType === "Redis") {
       setConnectionName("redis-session-cache");
-      setHost("redis-cache.corp.internal");
+      setHost("redis");
       setPort(6379);
       setDatabase("db0");
       setAuthMethod("AUTH Token");
       setUsername("default");
       setPassword("RedisSecret2026!");
+    } else if (newType === "Kerberos KDC") {
+      setConnectionName("kerberos-auth-kdc");
+      setHost("kerberos");
+      setPort(88);
+      setDatabase("FINLAKE.INTERNAL");
+      setAuthMethod("Kerberos v5 / GSSAPI");
+      setUsername("finlake/admin");
+      setPassword("FinLake2026!");
     } else if (newType === "MinIO / S3") {
       setConnectionName("minio-archive-s3");
       setHost("minio");
@@ -112,7 +120,7 @@ export default function NewSourcePage() {
     }
   };
 
-  const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres" | "kafka" | "mongodb" | "redis" | "minio") => {
+  const handleQuickDemo = async (targetEngine: "sqlserver" | "postgres" | "kafka" | "mongodb" | "redis" | "minio" | "kerberos") => {
     let payload: SourceProbeRequest;
     if (targetEngine === "postgres") {
       setDbType("PostgreSQL");
@@ -167,23 +175,23 @@ export default function NewSourcePage() {
     } else if (targetEngine === "mongodb") {
       setDbType("MongoDB");
       setConnectionName("mongo-customer-profiles");
-      setHost("mongo-cluster.corp.internal");
+      setHost("mongodb");
       setPort(27017);
       setDatabase("customer_profiles");
       setAuthMethod("SCRAM-SHA-256");
       setUsername("finlake_app");
-      setPassword("SecretMongoPass2026!");
+      setPassword("FinLake2026!StrongPass#");
       setEncrypt(true);
       setTrustCert(true);
       setTimeoutSec(15);
       payload = {
         connection_name: "mongo-customer-profiles",
         type: "mongodb",
-        host: "mongo-cluster.corp.internal",
+        host: "mongodb",
         port: 27017,
         database: "customer_profiles",
         username: "finlake_app",
-        password: "SecretMongoPass2026!",
+        password: "FinLake2026!StrongPass#",
         auth_method: "scram-sha-256",
         encrypt: true,
         trust_server_certificate: true,
@@ -192,7 +200,7 @@ export default function NewSourcePage() {
     } else if (targetEngine === "redis") {
       setDbType("Redis");
       setConnectionName("redis-session-cache");
-      setHost("redis-cache.corp.internal");
+      setHost("redis");
       setPort(6379);
       setDatabase("db0");
       setAuthMethod("AUTH Token");
@@ -204,7 +212,7 @@ export default function NewSourcePage() {
       payload = {
         connection_name: "redis-session-cache",
         type: "redis",
-        host: "redis-cache.corp.internal",
+        host: "redis",
         port: 6379,
         database: "db0",
         username: "default",
@@ -213,6 +221,31 @@ export default function NewSourcePage() {
         encrypt: false,
         trust_server_certificate: true,
         connection_timeout: 5
+      };
+    } else if (targetEngine === "kerberos") {
+      setDbType("Kerberos KDC");
+      setConnectionName("kerberos-auth-kdc");
+      setHost("kerberos");
+      setPort(88);
+      setDatabase("FINLAKE.INTERNAL");
+      setAuthMethod("Kerberos v5 / GSSAPI");
+      setUsername("finlake/admin");
+      setPassword("FinLake2026!");
+      setEncrypt(true);
+      setTrustCert(true);
+      setTimeoutSec(10);
+      payload = {
+        connection_name: "kerberos-auth-kdc",
+        type: "kerberos",
+        host: "kerberos",
+        port: 88,
+        database: "FINLAKE.INTERNAL",
+        username: "finlake/admin",
+        password: "FinLake2026!",
+        auth_method: "gssapi",
+        encrypt: true,
+        trust_server_certificate: true,
+        connection_timeout: 10
       };
     } else if (targetEngine === "minio") {
       setDbType("MinIO / S3");
@@ -274,6 +307,7 @@ export default function NewSourcePage() {
     else if (dbType === "Apache Kafka") resolvedType = "kafka";
     else if (dbType === "MongoDB") resolvedType = "mongodb";
     else if (dbType === "Redis") resolvedType = "redis";
+    else if (dbType === "Kerberos KDC") resolvedType = "kerberos";
     else if (dbType === "MinIO / S3") resolvedType = "minio";
 
     const payload: SourceProbeRequest = {
@@ -427,6 +461,13 @@ export default function NewSourcePage() {
           >
             <Zap className="h-3 w-3 text-amber-600" /> MinIO S3
           </button>
+          <button
+            onClick={() => handleQuickDemo("kerberos")}
+            disabled={isFormLocked}
+            className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-semibold transition-colors flex items-center gap-1"
+          >
+            <Zap className="h-3 w-3 text-indigo-600" /> Kerberos KDC
+          </button>
         </div>
       </div>
 
@@ -487,8 +528,9 @@ export default function NewSourcePage() {
                     <option value="MongoDB">MongoDB (Document Store)</option>
                     <option value="Redis">Redis (Key-Value Cache)</option>
                   </optgroup>
-                  <optgroup label="Stockage Objet">
+                  <optgroup label="Stockage Objet & Sécurité">
                     <option value="MinIO / S3">MinIO / S3 (Object Storage)</option>
+                    <option value="Kerberos KDC">Kerberos KDC (Realm FINLAKE.INTERNAL)</option>
                   </optgroup>
                 </select>
               </div>

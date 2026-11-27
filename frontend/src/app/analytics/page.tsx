@@ -553,6 +553,12 @@ export default function AnalyticsPage() {
             { label: "📑 Invoices by Status", prompt: "Group invoices by status with counts and totals" },
             { label: "👥 Customer 3-Way Join", prompt: "Show customer details with invoices and settled payments" },
             { label: "🧊 Iceberg Commit Snapshots", prompt: "Show latest Iceberg committed snapshots audit log" },
+            { label: "🔗 Cross-DB: PostgreSQL + MongoDB KYC", prompt: "Cross-DB join PostgreSQL retail customers with MongoDB KYC profiles" },
+            { label: "⚡ Cross-DB: SQL Server + Kafka Events", prompt: "Join SQL Server customers with real-time Kafka polyglot events" },
+            { label: "🍃 MongoDB: Customer Profiles", prompt: "Query MongoDB customer KYC profiles" },
+            { label: "🔴 Redis: Active Sessions", prompt: "Inspect active Redis user sessions and TTLs" },
+            { label: "📦 Cassandra: Mobile Ledger", prompt: "Query Cassandra Nordic mobile-money ledger" },
+            { label: "📈 InfluxDB: Gateway TPS", prompt: "Show InfluxDB gateway TPS throughput and sink latency" },
           ].map((chip) => (
             <button
               key={chip.label}
@@ -734,6 +740,72 @@ export default function AnalyticsPage() {
             className="w-full bg-[#0b0f19] border border-zinc-800 rounded-xl p-4 font-mono text-sm text-purple-200 focus:outline-none focus:border-purple-500 resize-y shadow-inner leading-relaxed"
             placeholder="SELECT * FROM hive.finlake_curated.transactions LIMIT 10"
           />
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------------------- */}
+      {/* Query Execution Flow Section                                        */}
+      {/* ------------------------------------------------------------------- */}
+      <div className="bg-white border border-zinc-200 rounded-xl p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-bold text-zinc-900 flex items-center gap-2">
+              <Layers className="h-4 w-4 text-purple-600" />
+              Query Execution Flow
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              End-to-end execution path from RBAC security context through Trino / Federated Polyglot Router to Dynamic PII Masking.
+            </p>
+          </div>
+          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+            executing
+              ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+              : result?.error
+              ? "bg-rose-50 text-rose-700 border-rose-200"
+              : result
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-zinc-100 text-zinc-600 border-zinc-200"
+          }`}>
+            {executing ? "EXECUTING" : result?.error ? "ERROR" : result ? "COMPLETED" : "READY"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+          {[
+            {
+              step: "1. Security & RBAC",
+              title: getSecurityContext().userName,
+              detail: `${getSecurityContext().userRole} · ${getSecurityContext().tenantId}`,
+            },
+            {
+              step: "2. Query Router",
+              title: catalog === "federated" ? "Multi-DB Cross-JOIN" : `${catalog.toUpperCase()} Catalog`,
+              detail: `Schema: ${schema}`,
+            },
+            {
+              step: "3. Compute Engine",
+              title: catalog === "federated" || !["hive", "iceberg"].includes(catalog) ? "Polyglot Federation" : "Trino 452 MPP",
+              detail: result?.execution_time_ms !== undefined ? `Latency: ${result.execution_time_ms} ms` : "Awaiting execution",
+            },
+            {
+              step: "4. PII Anonymization",
+              title: getSecurityContext().userRole === "ANALYST" || getSecurityContext().userRole === "DATA_ENGINEER" ? "Dynamic Masking" : "Policy Evaluated",
+              detail: "Enforced by Admin / Data Owner",
+            },
+            {
+              step: "5. Visual Workbench",
+              title: result?.row_count !== undefined ? `${result.row_count} rows returned` : "0 rows",
+              detail: `View: ${viewMode.toUpperCase()}`,
+            },
+          ].map((node) => (
+            <div key={node.step} className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+                {node.step}
+              </span>
+              <p className="text-xs font-bold text-zinc-900 mt-1 truncate font-mono">{node.title}</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{node.detail}</p>
+            </div>
+          ))}
         </div>
       </div>
 

@@ -83,6 +83,69 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
+  # 1d. Polyglot NoSQL & Auth Containers (MongoDB, Redis, Kerberos KDC)
+  # -------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7.0-jammy
+    container_name: finlake-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=finlake_app
+      - MONGO_INITDB_ROOT_PASSWORD=${SQLSERVER_SA_PASSWORD}
+      - MONGO_INITDB_DATABASE=customer_profiles
+    command: ["--wiredTigerCacheSizeGB", "0.25"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - mongodb-data:/data/db
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: finlake-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--requirepass", "RedisSecret2026!"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "RedisSecret2026!", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  kerberos:
+    build:
+      context: .
+      dockerfile: Dockerfile.kerberos
+    container_name: finlake-kerberos
+    ports:
+      - "88:88/tcp"
+      - "88:88/udp"
+      - "749:749/tcp"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 88 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - kerberos-data:/var/lib/krb5kdc
+    networks:
+      - finlake-net
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
   # 2. S3-Compatible Object Storage (MinIO)
   # -------------------------------------------------------------------------
   minio:
@@ -275,3 +338,9 @@ volumes:
     name: finlake-postgres-source-data
   kafka-data:
     name: finlake-kafka-data
+  mongodb-data:
+    name: finlake-mongodb-data
+  redis-data:
+    name: finlake-redis-data
+  kerberos-data:
+    name: finlake-kerberos-data
