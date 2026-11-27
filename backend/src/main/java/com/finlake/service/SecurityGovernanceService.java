@@ -224,7 +224,7 @@ public class SecurityGovernanceService {
                 boolean isAnon = userAnonymizationPolicies.getOrDefault(p.id(), !p.canViewPii());
                 return new UserPersonaDTO(
                     p.id(), p.username(), p.fullName(), p.email(), p.tenantId(),
-                    p.role(), p.permissions(), !isAnon, p.canRunJobs(), p.canViewIceberg()
+                    p.role(), p.permissions(), !isAnon, p.canManagePipelines(), p.canViewIcebergSnapshots()
                 );
             })
             .toList();
@@ -236,7 +236,7 @@ public class SecurityGovernanceService {
         boolean isAnon = userAnonymizationPolicies.getOrDefault(p.id(), !p.canViewPii());
         return Optional.of(new UserPersonaDTO(
             p.id(), p.username(), p.fullName(), p.email(), p.tenantId(),
-            p.role(), p.permissions(), !isAnon, p.canRunJobs(), p.canViewIceberg()
+            p.role(), p.permissions(), !isAnon, p.canManagePipelines(), p.canViewIcebergSnapshots()
         ));
     }
 
