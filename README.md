@@ -12,41 +12,41 @@ FinLake sépare rigoureusement le plan de contrôle (**Control Plane**), le plan
 
 ```mermaid
 flowchart TD
-    subgraph Sources["Sources Relationnelles Opérationnelles"]
-        MSSQL["Microsoft SQL Server 2022<br/>dbo.transactions : 6.36M lignes<br/>Port 1433"]
-        PG_SRC["PostgreSQL 16 Source<br/>retail_banking (tables POS / Client)<br/>Port 5434:5432"]
+    subgraph Sources["Sources Relationnelles et Polyglottes"]
+        MSSQL["Microsoft SQL Server 2022 - dbo.transactions 6.36M lignes - Port 1433"]
+        PG_SRC["PostgreSQL 16 Source - retail_banking - Port 5434"]
     end
 
-    subgraph Control_Plane["Plan de Contrôle & Data Plane (Java 21)"]
-        API["Spring Boot 3.3.5 Control Plane<br/>Endpoints REST : Sources, Probe 4-étapes, Jobs, Auth, Catalog"]
-        WORKER["Native Java Ingestion Engine<br/>Keyset Pagination O(1)<br/>Standard Apache Parquet<br/>Staging ➔ Promotion Atomique 3 phases"]
+    subgraph Control_Plane["Plan de Controle et Data Plane Java 21"]
+        API["Spring Boot 3.3.5 Control Plane - REST API"]
+        WORKER["Native Java Ingestion Engine - Keyset O1 - Parquet - 3 Phases"]
     end
 
-    subgraph Storage_Tier["Couche Stockage & Catalogage"]
-        MINIO["MinIO Object Storage S3<br/>Bucket: finlake<br/>staging/ ➔ curated/ ➔ manifests/"]
-        HIVE["Apache Hive Metastore 4.0.0<br/>PostgreSQL 16.4 backend (Port 5433)"]
-        TRINO["Trino Query Engine 452<br/>hive.finlake_curated.transactions<br/>iceberg.finlake_iceberg.transactions"]
+    subgraph Storage_Tier["Couche Stockage et Catalogage"]
+        MINIO["MinIO Object Storage S3 - Bucket finlake - staging / curated / manifests"]
+        HIVE["Apache Hive Metastore 4.0.0 - PostgreSQL 16.4 Port 5433"]
+        TRINO["Trino Query Engine 452 - Hive et Iceberg"]
     end
 
-    subgraph Presentation["Interface Web (Next.js 15)"]
-        UI["Next.js 15 + Tailwind CSS + Lucide<br/>Port 3000<br/>Visual Analytics • Copilot AI • Data Sources • RBAC"]
+    subgraph Presentation["Interface Web Next.js 15"]
+        UI["Next.js 15 + Tailwind CSS - Port 3000"]
     end
 
-    MSSQL -->|Keyset Extraction| WORKER
-    PG_SRC -->|JDBC Discovery & Probe| API
-    WORKER -->|1. Staging Upload| MINIO
-    WORKER -->|2. Checksum & Row Count| WORKER
-    WORKER -->|3. Promotion & Manifest| MINIO
-    API -->|Supervision & Probe| MSSQL
-    HIVE -->|Sync Partitions| MINIO
-    TRINO -->|Catalog Metadata| HIVE
-    TRINO -->|Vectorized Parquet Read| MINIO
-    UI -->|"REST / JSON (Port 8000)"| API
+    MSSQL -->|"Keyset Extraction"| WORKER
+    PG_SRC -->|"JDBC Discovery and Probe"| API
+    WORKER -->|"1. Staging Upload"| MINIO
+    WORKER -->|"2. Checksum and Row Count"| WORKER
+    WORKER -->|"3. Promotion and Manifest"| MINIO
+    API -->|"Supervision and Probe"| MSSQL
+    HIVE -->|"Sync Partitions"| MINIO
+    TRINO -->|"Catalog Metadata"| HIVE
+    TRINO -->|"Vectorized Parquet Read"| MINIO
+    UI -->|"REST JSON Port 8000"| API
 ```
 
 ### Principes Directeurs
 
-1. **Isolation et Extraction à Mémoire Bornée** : Utilisation exclusive d'une pagination par jeu de clés (*Keyset Pagination*) sur `ingest_row_id` en complexité $O(1)$, interdisant tout `OFFSET` dégradant la mémoire de la base de données.
+1. **Isolation et Extraction à Mémoire Bornée** : Utilisation exclusive d'une pagination par jeu de clés (*Keyset Pagination*) sur `ingest_row_id` en complexité `O(1)`, interdisant tout `OFFSET` dégradant la mémoire de la base de données.
 2. **Temporalité Simulée Explicite** : PaySim utilise un incrément `step` représentant 1 heure simulée. FinLake dérive explicitement `event_time_simulated` (timestamp UTC) et `event_date` (partition journalière) sans jamais les présenter comme des dates réelles de production bancaire.
 3. **Publication Atomique en 3 Phases** :
    - Écriture des fichiers Parquet dans `staging/`.
