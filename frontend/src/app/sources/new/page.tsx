@@ -301,14 +301,18 @@ export default function NewSourcePage() {
     await executeProbeWithAnimation(payload);
   };
 
+  const resolveEngineType = (displayType: string): string => {
+    if (displayType === "PostgreSQL") return "postgresql";
+    if (displayType === "Apache Kafka") return "kafka";
+    if (displayType === "MongoDB") return "mongodb";
+    if (displayType === "Redis") return "redis";
+    if (displayType === "Kerberos KDC") return "kerberos";
+    if (displayType === "MinIO / S3") return "minio";
+    return "sqlserver";
+  };
+
   const handleTestConnection = async () => {
-    let resolvedType = "sqlserver";
-    if (dbType === "PostgreSQL") resolvedType = "postgresql";
-    else if (dbType === "Apache Kafka") resolvedType = "kafka";
-    else if (dbType === "MongoDB") resolvedType = "mongodb";
-    else if (dbType === "Redis") resolvedType = "redis";
-    else if (dbType === "Kerberos KDC") resolvedType = "kerberos";
-    else if (dbType === "MinIO / S3") resolvedType = "minio";
+    const resolvedType = resolveEngineType(dbType);
 
     const payload: SourceProbeRequest = {
       connection_name: connectionName,
@@ -384,18 +388,19 @@ export default function NewSourcePage() {
     if (testState !== "success") return;
     setIsSaving(true);
     try {
-      const isPg = dbType === "PostgreSQL";
+      const resolvedType = resolveEngineType(dbType);
       await registerSource({
         connection_name: connectionName,
-        type: isPg ? "postgresql" : "sqlserver",
+        type: resolvedType,
         host: host,
         port: port,
         database: database,
         username: username,
         password: password,
-        auth_method: isPg ? "password" : "sqlserver",
+        auth_method: authMethod,
         encrypt: encrypt,
-        trust_server_certificate: trustCert
+        trust_server_certificate: trustCert,
+        connection_timeout: timeout
       });
       router.push("/sources");
     } catch (err) {
