@@ -1,23 +1,23 @@
 ---
 name: documentation-release
-description: Keep FinLake setup, operations, data lineage, API, and benchmark documentation reproducible.
+description: Keep FinLake setup, architecture, context, API contracts, data sources guide, and skills synchronized and reproducible.
 ---
 # Documentation and Release Skill
 
 ## Mission
-Make the repository understandable and reproducible by another engineer.
+Ensure any engineer or reviewer can understand, start, test, and defend the entire FinLake repository using only its documentation.
 
-## Required docs
-README quick start, architecture diagram, dataset card/attribution, data dictionary, environment variables, API reference, storage layout, Trino SQL examples, benchmark methodology/results, limitations, and troubleshooting.
+## Canonical Documentation Set
+- `README.md` : Quick start, stack overview, ports, and Windows PowerShell / Docker commands.
+- `docs/CAHIER_DES_CHARGES.md` : Functional and technical specification.
+- `docs/architecture.md` : Docker topology, Mermaid architecture diagram, MinIO storage layout, and polyglot flows.
+- `docs/context.md` : Complete database taxonomy, architectural & design justifications, and trade-offs.
+- `docs/api_contracts.md` : Exhaustive REST API contracts (headers, payloads, responses, status codes).
+- `docs/data_sources_guide.md` : Step-by-step guide for adding and probing polyglot sources.
+- `docs/benchmark_report.md` & `docs/quality_report.md` & `docs/iceberg_guide.md`.
 
 ## Rules
-- Document commands for Windows PowerShell and generic Docker-compatible shells where practical.
-- Include `.env.example`, never real credentials.
-- Pin or constrain dependency versions and record tested versions.
-- Document ports, volumes, health checks, startup order, and expected readiness.
-- Label synthetic timestamps and synthetic records clearly.
-- Separate implemented features from planned features.
-- Never invent benchmark results, dataset license terms, or production guarantees.
-- Before completion, follow README from a clean checkout and verify each command.
-## Definition of done
-A reviewer can clone, configure, start, ingest a sample, query it in Trino, run tests, and reproduce benchmark results using only repository documentation.
+- Always quote Mermaid edge labels containing parentheses (e.g., `|"Keyset Pagination O(1)"|`) to prevent Mermaid parse errors.
+- Document Windows PowerShell differences (use `;` instead of `&&` for chaining, `cmd /c "cd frontend && npm run build"` if PowerShell execution policy blocks `npm.ps1`).
+- Keep `.env.example` synchronized with `docker-compose.yml`; never commit `.env`.
+- Update `docs/api_contracts.md`, `docs/architecture.md`, `docs/context.md`, and the relevant `.agents/skills/*/SKILL.md` whenever code behavior changes.

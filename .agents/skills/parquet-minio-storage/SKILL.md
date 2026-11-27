@@ -1,21 +1,26 @@
 ---
 name: parquet-minio-storage
-description: Write, partition, compress, and publish analytical files to MinIO safely.
+description: Maintain DuckDB Parquet serialization, ZSTD/Snappy compression, MinIO S3 staging/promotion, and Kafka S3 Sink storage layout.
 ---
 # Parquet and MinIO Storage Skill
 
 ## Mission
-Produce query-efficient and reproducible objects in MinIO.
+Produce query-efficient, reproducible Parquet/CSV/NDJSON objects in `finlake-minio` (`s3://finlake/`) with atomic promotion and manifest verification.
+
+## Storage Layout (`s3://finlake/`)
+- `staging/<job_id>/` : Temporary batch uploads during active extraction.
+- `raw/paysim/transactions/` : Unmodified source landing zone.
+- `curated/<table_or_domain>/` : Promoted Parquet files (partitioned by `event_date=YYYY-MM-DD` when applicable).
+- `curated/kafka_sink/<topic>/ingest_date=YYYY-MM-DD/` : Micro-batched events flushed by `KafkaMinioSinkService`.
+- `manifests/<table>/<run_id>.json` : Published last after checksum & row count validation.
+- `warehouse/` & `iceberg/` : Hive Metastore and Apache Iceberg v2 storage.
 
 ## Rules
-- Use PyArrow for Parquet writing and schema control; use CSV only for benchmark comparisons.
-- Write to a staging prefix first; publish a manifest/complete marker only after all objects are uploaded and validated.
-- Store source, table, ingestion date, and run ID in the object path. Partition only on query-relevant, low/medium-cardinality fields.
-- For PaySim, derive a synthetic event timestamp from `step`; compare unpartitioned, day/hour and month-like groupings carefully. Do not partition by account ID.
-- Avoid tiny files; benchmark target file sizes and batch-to-file mapping instead of creating one object per tiny batch.
-- Test Snappy and Zstandard where supported; record codec and row-group size.
-- Preserve schema metadata and nullability. Validate row counts and Parquet readability after upload.
-- Use MinIO's S3-compatible endpoint explicitly; distinguish internal Docker endpoint from host console endpoint.
-- Do not expose buckets publicly. Use least-privilege credentials.
-## Required outputs
-Storage layout, writer implementation, manifest format, validation checks, and benchmark metadata.
+- Use **DuckDB JDBC** (`org.duckdb:duckdb_jdbc`) inside `NativeJavaIngestionService.processAndUploadBatch` for Parquet conversion (`snappy`, `zstd`, `gzip`, `none`); never reintroduce Python/PyArrow.
+- Write to `staging/` first, compute SHA-256 and byte sizes, promote atomically to `curated/`, and publish the manifest JSON last.
+- Derive `event_date` from PaySim `step` (`2023-01-01T00:00:00Z + (step - 1) hours`). Never partition by high-cardinality IDs like `nameOrig` or `nameDest`.
+- Ensure bucket existence (`BucketExistsArgs` / `MakeBucketArgs`) before every upload.
+
+## Acceptance Checks
+- Extraction job produces valid Parquet files under `curated/` and a matching manifest under `manifests/`.
+- `POST /kafka/sink/flush` writes batched events to `curated/kafka_sink/`.

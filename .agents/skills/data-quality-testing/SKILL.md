@@ -1,26 +1,25 @@
 ---
 name: data-quality-testing
-description: Validate source data, ingestion outputs, API contracts, and analytical query correctness.
+description: Validate source connectivity, Java backend unit tests, Next.js TypeScript builds, API contracts, and multi-tenant data isolation.
 ---
 # Data Quality and Testing Skill
 
 ## Mission
-Ensure the data is complete, typed, traceable, and queryable after ingestion.
+Ensure every backend, frontend, and infrastructure change is verified before claiming completion.
 
-## Checks
-- Required columns and supported types.
-- Null counts, duplicate transaction keys (if a stable key exists), valid transaction types, non-negative amounts where expected.
-- Step range and synthetic timestamp conversion.
-- `isFraud` and `isFlaggedFraud` domain in {0,1}.
-- Source row count = extracted row count = Parquet read-back row count.
-- Partition totals reconcile to global totals.
-- Object manifest matches actual MinIO objects and byte sizes.
-- Trino aggregate results reconcile with local PyArrow/DuckDB reference results.
-- API state transitions and failure/retry semantics.
+## Test Suites & Commands
+1. **Backend Unit Tests (Java 21 / Maven)**:
+   - Command: `mvn -f backend/pom.xml test` (or `clean test`)
+   - Covers: `JobDtoTest`, `FinlakeApplicationTests`, `SourceExplorerServiceTest`, `TrinoAnalyticsServiceTest`.
+2. **Frontend Type-Check & Build (Next.js 15 / Turbopack)**:
+   - Command (Windows PowerShell safe): `cmd /c "cd frontend && npm run build"`
+   - Must compile all 10 routes (`/`, `/analytics`, `/benchmarks`, `/catalog`, `/iceberg`, `/jobs`, `/login`, `/security`, `/sources`, `/sources/new`) with 0 TypeScript errors.
+3. **Live Docker End-to-End Checks**:
+   - `GET http://localhost:8000/health` → `"healthy"`
+   - `POST http://localhost:8000/sources/probe` → verify SQL Server TLS (`trust_server_certificate=false` fails Step 2 with PKIX, `true` succeeds) + MongoDB, Redis, Kerberos, Kafka.
+   - `POST /storage/jobs` & `GET /storage/jobs?tenant_id=...` → verify polyglot ingestion & tenant filtering.
+   - `POST /api/analytics/query` & `POST /api/security/policies` → verify single/multi-DB queries and `ADMIN`/`DATA_OWNER` dynamic anonymization.
+
 ## Rules
-- Distinguish hard errors from warnings; do not silently repair source values.
-- Store quality results and validation timestamp with each job.
-- Use deterministic fixtures for unit tests and a small PaySim sample for integration tests.
-- Keep sensitive values out of logs and test snapshots.
-## Required outputs
-Data-quality report, test suite, reconciliation SQL, and CI test instructions.
+- Never report tests or services as passing unless executed after the final edit.
+- Keep sensitive values and real `.env` secrets out of test fixtures and logs.

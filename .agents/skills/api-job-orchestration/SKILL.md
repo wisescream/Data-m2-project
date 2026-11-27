@@ -1,32 +1,26 @@
 ---
 name: api-job-orchestration
-description: Build FinLake REST endpoints and reliable asynchronous extraction job lifecycle.
+description: Maintain FinLake Spring Boot REST endpoints, DTO contracts, and asynchronous polyglot extraction job lifecycle.
 ---
 # API and Job Orchestration Skill
 
 ## Mission
-Expose source discovery and asynchronous extraction through a small REST API.
+Maintain clean REST contracts (`docs/api_contracts.md`) and reliable asynchronous job execution across all database families in `finlake-backend`.
 
-## Required endpoints
-- GET /health
-- GET /sources
-- POST /sources/{source_id}/test
-- GET /sources/{source_id}/tables
-- GET /sources/{source_id}/tables/{table}/schema
-- POST /storage/jobs
-- GET /storage/jobs/{job_id}
-- GET /storage/jobs/{job_id}/result
-- POST /storage/jobs/{job_id}/retry (optional)
-- POST /storage/jobs/{job_id}/cancel (optional)
+## Codebase Ownership
+- **Controllers**: `HealthController`, `AuthController`, `SourceController`, `JobController`, `KafkaController`, `AnalyticsController`, `DataCatalogController`, `SecurityGovernanceController`, `DashboardController`.
+- **Services**: `JobOrchestrationService`, `NativeJavaIngestionService`, `KafkaMinioSinkService`.
+- **Persistence**: `JobMetadataRepository` persisting jobs and runs in SQL Server (`dbo.ingestion_jobs`, `dbo.job_runs`).
+- **Frontend**: `frontend/src/lib/api.ts`, `frontend/src/app/jobs/page.tsx`.
 
 ## Rules
-- Use FastAPI, Pydantic request/response schemas, OpenAPI, and structured logs.
-- POST job creation returns 202 Accepted and a job identifier; processing occurs in a worker.
-- Validate format, table, partition columns, batch size, compression, and source identifier.
-- Keep job state in a durable local metadata store (SQLite is acceptable for the local single-node project) or SQL Server metadata schema if approved.
-- Define state transitions: PENDING -> RUNNING -> SUCCEEDED / FAILED / CANCELLED.
-- Make result endpoint return row counts, object keys, bytes, format, partition columns, timings, and checksum/manifest reference.
-- Never return credentials or raw financial rows from job status endpoints.
-- Add pagination to metadata endpoints where needed and consistent error responses.
-## Required outputs
-OpenAPI spec, API tests, job state diagram, and curl examples.
+- Use **Spring Boot 3.3.5 + Java 21 records** (`@JsonProperty`) for all DTOs; never reintroduce Python/FastAPI.
+- `POST /storage/jobs` MUST return `202 Accepted` (`JobCreateResponseDTO`) and dispatch execution asynchronously via `ExecutorService` to `NativeJavaIngestionService.executeIngestion`.
+- State transitions: `PENDING` → `RUNNING` → `SUCCESS` / `FAILED` / `CANCELLED`.
+- `GET /storage/jobs` MUST filter by `tenant_id` (`sourceExplorerService.getTenantForSource(j.sourceId())`) and surface newly submitted jobs at the top for every tenant (`tenant_acme`, `tenant_apex`, `tenant_nordic`).
+- `GET /storage/jobs/{jobId}/result` returns row counts, MinIO object keys, byte sizes, SHA-256 checksums, and manifest URI — never raw credentials or unmasked PII rows.
+- Keep `docs/api_contracts.md` synchronized whenever any endpoint, header, or DTO changes.
+
+## Acceptance Checks
+- `mvn -f backend/pom.xml test` passes (`JobDtoTest`, `FinlakeApplicationTests`, `SourceExplorerServiceTest`, `TrinoAnalyticsServiceTest`).
+- Submitting a job from `/jobs` for SQL Server, PostgreSQL, MongoDB, Redis, Kafka, Cassandra, or InfluxDB transitions to `SUCCESS` and appears in the company's Storage Jobs table and Pipeline Execution Flow.

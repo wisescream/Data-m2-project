@@ -1,20 +1,26 @@
 ---
 name: trino-hive-catalog
-description: Configure Hive Metastore and Trino to query FinLake objects in MinIO.
+description: Maintain Hive Metastore, Trino 452 MPP querying, Federated Polyglot Routing, AI Text-to-SQL, and Iceberg Time-Travel.
 ---
-# Trino and Hive Catalog Skill
+# Trino, Hive, Iceberg & Federated Query Skill
 
 ## Mission
-Make registered Parquet datasets queryable through Trino SQL.
+Keep distributed SQL querying (`TrinoAnalyticsService`), AI Copilot (`AiTextToSqlService`), and Iceberg Time-Travel (`IcebergService`) accurate, fast, and multi-tenant.
+
+## Codebase Ownership
+- `backend/src/main/java/com/finlake/service/TrinoAnalyticsService.java`
+- `backend/src/main/java/com/finlake/service/IcebergService.java`
+- `backend/src/main/java/com/finlake/service/AiTextToSqlService.java`
+- `backend/src/main/java/com/finlake/service/DataCatalogService.java`
+- `frontend/src/app/analytics/page.tsx`, `frontend/src/app/iceberg/page.tsx`, `frontend/src/app/catalog/page.tsx`
 
 ## Rules
-- Explain that uploading Parquet objects to MinIO alone does not create SQL tables.
-- Configure Hive Metastore and the Trino Hive connector consistently, including object-store access and warehouse location.
-- Keep metastore database persistence and MinIO persistence explicit in Compose.
-- Register schemas/tables with documented DDL and location/partition metadata.
-- Verify discovery with `SHOW SCHEMAS`, `SHOW TABLES`, `DESCRIBE`, row counts, filters, aggregations, and joins.
-- Validate partition pruning using `EXPLAIN` and controlled query comparisons.
-- Avoid claiming ACID guarantees for plain Hive external Parquet tables.
-- Treat Iceberg as a separate optional catalog/connector experiment with its own acceptance tests.
-## Required outputs
-Trino catalog configuration, metastore configuration, table DDL, SQL smoke tests, and troubleshooting notes.
+- **Trino JDBC**: Strip trailing semicolons before sending SQL to `jdbc:trino://trino:8080/<catalog>/<schema>`.
+- **Federated Polyglot Routing**: Queries targeting `postgresql`, `mongodb`, `redis`, `kafka`, `cassandra`, `influxdb`, `minio`, or `federated` (Cross-DB JOINs) are routed by `TrinoAnalyticsService.executeFederatedPolyglotQuery` using live `SourceExplorerService` data.
+- **Keep No-Arg Constructor**: `TrinoAnalyticsService` MUST retain its no-arg constructor alongside `@Autowired TrinoAnalyticsService(SourceExplorerService)` so `TrinoAnalyticsServiceTest` passes.
+- **Iceberg Multi-Tenancy**: `IcebergService` MUST return distinct namespaces and snapshots per company (`tenant_acme` → `iceberg.finlake_iceberg.transactions`, `tenant_apex` → `iceberg.apex_eu_iceberg.retail_ledger`, `tenant_nordic` → `iceberg.nordic_iceberg.mobile_money_ledger`) with working `time-travel` metrics.
+- **AI Copilot**: `AiTextToSqlService` checks deterministic polyglot/federated intents first, then Groq LLM (`GROQ_API_KEY`), with full offline semantic fallback.
+
+## Acceptance Checks
+- Single-DB queries (`hive`, `iceberg`, `postgresql`, `mongodb`, `redis`, `kafka`, `cassandra`, `influxdb`) and `federated` Cross-DB JOINs return valid columns/rows in `/analytics` with Query Execution Flow updated.
+- `/iceberg` shows distinct snapshots and working time-travel for each of the 3 companies.

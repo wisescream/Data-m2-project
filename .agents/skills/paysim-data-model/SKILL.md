@@ -1,28 +1,23 @@
 ---
 name: paysim-data-model
-description: Interpret, validate, stage, and model the PaySim synthetic mobile-money dataset for FinLake.
+description: Interpret, validate, stage, and model the PaySim synthetic mobile-money dataset and complementary polyglot schemas in FinLake.
 ---
-# PaySim Data Model Skill
+# PaySim & Polyglot Data Model Skill
 
 ## Mission
-Make PaySim understandable and reproducible as a financial transaction source.
+Keep PaySim and FinLake's complementary multi-tenant schemas accurate, clearly labeled as synthetic, and free of invented production claims.
 
-## Source facts
-- Dataset: PaySim / Synthetic Financial Datasets For Fraud Detection.
-- Approximately 6,362,620 rows, 11 columns, 744 hourly steps.
-- Synthetic mobile-money activity; not real customer or bank data.
-- Transaction types: CASH_IN, CASH_OUT, DEBIT, PAYMENT, TRANSFER.
-- Fraud labels are simulation labels, not evidence of real-world fraud.
+## PaySim Core Facts
+- **Source table**: `dbo.transactions` in `finlake_source` (`finlake-sqlserver`), ~6,362,620 rows, 11 columns, 744 hourly `step` values.
+- **Columns**: `step`, `type` (`CASH_IN`, `CASH_OUT`, `DEBIT`, `PAYMENT`, `TRANSFER`), `amount`, `nameOrig`, `oldbalanceOrg`, `newbalanceOrig`, `nameDest`, `oldbalanceDest`, `newbalanceDest`, `isFraud`, `isFlaggedFraud`.
+- **Synthetic Timestamp Rule**: `event_date` is derived from `step` using base time `2023-01-01T00:00:00Z + (step - 1) hours` in `NativeJavaIngestionService`. Always label it as simulated time, never real calendar dates.
+
+## Complementary Schemas
+- **Acme Relational (`finlake-sqlserver` / `hive.finlake_curated`)**: `Customer`, `Invoice`, `Payment`, `transactions`, plus `kafka_polyglot_events`.
+- **Apex EU (`finlake-postgres-source` / MongoDB / Redis)**: `retail_banking` (`retail_customers`, `retail_banking_tx`), `customer_profiles` (KYC BSON), `session_token` (Redis).
+- **Nordic Mobile Money (`finlake-kafka` / Cassandra / InfluxDB)**: `mobile_money_events`, `mobile_tx_by_account`, `ingestion_throughput_tps`.
 
 ## Rules
-- Preserve the raw source file unchanged in a raw/ landing zone and record checksum, source filename, ingestion timestamp, row count, and dataset version.
-- Validate expected columns and types; reject or quarantine malformed rows rather than silently dropping them.
-- Treat `nameOrig` and `nameDest` as pseudonymous identifiers, not real identities.
-- Do not invent customer demographics, legal entities, currencies, merchants, invoices, or account attributes absent from PaySim.
-- If normalized account/customer tables are created, clearly label them as derived dimensions containing only observed identifiers and derived metadata.
-- Convert `step` to a documented synthetic timestamp using a fixed configurable simulation start timestamp. Never describe it as a real calendar date.
-- Preserve `isFraud` and `isFlaggedFraud` as labels/flags. Do not use either as an input feature for a fraud model.
-- For a future fraud-model extension, document that fraud transactions are cancelled in the simulator and avoid leakage from post-transaction balance fields (`oldbalanceOrg`, `newbalanceOrig`, `oldbalanceDest`, `newbalanceDest`) unless the experiment explicitly studies leakage.
-- Keep raw monetary values and their unit semantics documented; do not assume MAD, EUR, or USD.
-## Required outputs
-Dataset card, source attribution, schema mapping, data dictionary, validation report, and a reproducible load script.
+- Never label PaySim monetary amounts with an assumed real currency (USD/EUR/MAD) unless explicitly referencing the separate `retail_banking` or `nordic_ledger` schemas.
+- Treat `nameOrig` and `nameDest` as pseudonymous simulation IDs, subject to dynamic masking when anonymized by `Admin` or `Data Owner`.
+- Never use `isFraud` or post-cancellation balance columns (`oldbalanceOrg`, `newbalanceOrig`, etc.) to train an unverified ML model in core scope.
